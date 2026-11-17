@@ -8,11 +8,11 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 
 | Id | Requirement | Phase | Covered by |
 |---|---|---|---|
-| R-ING-01 | Sensor telemetry published on MQTT topic `sensors/{sensorId}/telemetry` is forwarded to Kafka topic `telemetry.v1`, keyed by sensor id. | 2 | |
-| R-ING-02 | A telemetry message that does not match the schema is not forwarded; it goes to a dead-letter topic with the reason. | 2 | |
-| R-ING-03 | Aircraft state vectors are read from an ADS-B source and published to Kafka topic `adsb.state.v1`, keyed by ICAO 24-bit address. | 2 | |
-| R-ING-04 | The ADS-B source is switchable by configuration: `replay` (a recorded file, the default) or `opensky` (the live API). | 2 | |
-| R-ING-05 | In `opensky` mode the poller never spends more than the configured daily credit budget; when the budget is used up it stops polling and reports it in its health status. | 2 | |
+| R-ING-01 | Sensor telemetry published on MQTT topic `sensors/{sensorId}/telemetry` is forwarded to Kafka topic `telemetry.v1`, keyed by sensor id. | 2 | `services/ingest`: `TelemetryCheckTest`, `IngestPipelineTest` (real Mosquitto and Kafka); `scripts/smoke.sh` |
+| R-ING-02 | A telemetry message that does not match the schema, or whose `sensorId` differs from the one in its MQTT topic, is not forwarded; it goes to a dead-letter topic with the reason. | 2 | `services/ingest`: `TelemetryCheckTest`, `IngestPipelineTest`; `scripts/smoke.sh` |
+| R-ING-03 | Aircraft state vectors are read from an ADS-B source and published to Kafka topic `adsb.state.v1`, keyed by ICAO 24-bit address. | 2 | `services/ingest`: `StateVectorMapperTest`, `PollCycleTest`, `IngestPipelineTest`; `scripts/smoke.sh` |
+| R-ING-04 | The ADS-B source is switchable by configuration: `replay` (a recorded file, the default) or `opensky` (the live API). | 2 | `services/ingest`: `PollCycleTest`, `IngestPipelineTest` (replay). The `opensky` setting was run once by hand against the live API; no automated test calls it. |
+| R-ING-05 | In `opensky` mode the poller never spends more than the configured daily credit budget while it runs; when the budget is used up, or the API reports its own limit, it stops polling until the next UTC day and reports it in its health status. (The count is kept in memory, so it starts again from zero when the service restarts.) | 2 | `services/ingest`: `CreditBudgetTest`, `PollCycleTest`. Also seen once against the live API: with a budget of 2 it made 2 requests and reported `BUDGET_EXHAUSTED`. |
 | R-ING-06 | Replay is deterministic: the same file, start time and speed produce the same sequence of responses. | 1 | `tools/simulator/test/replay.test.ts` |
 
 ## Storage and REST API
@@ -51,7 +51,7 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 | R-OPS-02 | An aircraft with no update for a configured time is removed from the live picture. | 6 | |
 | R-OPS-03 | After the message broker or database restarts, every service recovers without a manual restart. | 6 | |
 | R-OPS-04 | Every service exposes health and metrics endpoints, including message lag and the age of the last message per source. | 6 | |
-| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`, for what exists so far: brokers, database and simulator. The services join the stack in their own phases. |
+| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`, for what exists so far: brokers, database, simulator and `ingest`. The services join the stack in their own phases. |
 
 ## AI tooling
 

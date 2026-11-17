@@ -8,7 +8,7 @@ Every message that crosses a service boundary is described here. The JSON Schema
 |---|---|---|---|---|---|
 | MQTT | `sensors/{sensorId}/telemetry` (QoS 1) | none | [telemetry.v1](telemetry.v1.schema.json) | sensors (the simulator) | `ingest` |
 | Kafka | `telemetry.v1` | `sensorId` | [telemetry.v1](telemetry.v1.schema.json) | `ingest` | `api`, `gateway` |
-| Kafka | `telemetry.dlq.v1` | `sensorId` if it could be read | the rejected payload as received, with the reason in a header | `ingest` | people, tools |
+| Kafka | `telemetry.dlq.v1` | the `sensorId` from the MQTT topic, or none if the topic had no usable one | the rejected payload exactly as received; headers `reason` (why it was rejected) and `mqtt-topic` (where it came from) | `ingest` | people, tools |
 | Kafka | `adsb.state.v1` | `icao24` | [adsb.state.v1](adsb.state.v1.schema.json) | `ingest` | `api`, `gateway` |
 
 The Kafka topics are created by the `kafka-init` container in [compose.yaml](../compose.yaml), with 3 partitions each. Automatic topic creation is off, so a misspelled topic name fails instead of creating a new topic.
