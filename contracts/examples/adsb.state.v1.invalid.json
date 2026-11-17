@@ -1,0 +1,9 @@
+{
+  "icao24": "89611A",
+  "callsign": "UAE332",
+  "ts": "2026-11-17T06:00:00Z",
+  "lastContact": "2026-11-17T06:00:01Z",
+  "lat": 14.4193,
+  "onGround": false,
+  "source": "radar"
+}

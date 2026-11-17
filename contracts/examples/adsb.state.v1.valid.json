@@ -1,0 +1,17 @@
+{
+  "icao24": "89611a",
+  "callsign": "UAE332",
+  "originCountry": "United Arab Emirates",
+  "ts": "2026-11-17T06:00:00Z",
+  "lastContact": "2026-11-17T06:00:01Z",
+  "lat": 14.4193,
+  "lon": 120.5891,
+  "baroAltitudeM": 2308.86,
+  "geoAltitudeM": 2491.74,
+  "onGround": false,
+  "velocityMs": 123.86,
+  "headingDeg": 237.04,
+  "verticalRateMs": -2.28,
+  "squawk": "6201",
+  "source": "replay"
+}

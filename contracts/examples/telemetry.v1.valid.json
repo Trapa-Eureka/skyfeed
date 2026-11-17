@@ -1,0 +1,10 @@
+{
+  "sensorId": "gs-iloilo",
+  "ts": "2026-11-17T06:00:00.000Z",
+  "seq": 42,
+  "lat": 10.833,
+  "lon": 122.493,
+  "temperatureC": 36.4,
+  "signalDbm": -71.2,
+  "messageRate": 184.5
+}

@@ -13,7 +13,7 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 | R-ING-03 | Aircraft state vectors are read from an ADS-B source and published to Kafka topic `adsb.state.v1`, keyed by ICAO 24-bit address. | 2 | |
 | R-ING-04 | The ADS-B source is switchable by configuration: `replay` (a recorded file, the default) or `opensky` (the live API). | 2 | |
 | R-ING-05 | In `opensky` mode the poller never spends more than the configured daily credit budget; when the budget is used up it stops polling and reports it in its health status. | 2 | |
-| R-ING-06 | Replay is deterministic: the same file and speed produce the same sequence of messages. | 1 | |
+| R-ING-06 | Replay is deterministic: the same file, start time and speed produce the same sequence of responses. | 1 | `tools/simulator/test/replay.test.ts` |
 
 ## Storage and REST API
 
@@ -51,7 +51,7 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 | R-OPS-02 | An aircraft with no update for a configured time is removed from the live picture. | 6 | |
 | R-OPS-03 | After the message broker or database restarts, every service recovers without a manual restart. | 6 | |
 | R-OPS-04 | Every service exposes health and metrics endpoints, including message lag and the age of the last message per source. | 6 | |
-| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | |
+| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`, for what exists so far: brokers, database and simulator. The services join the stack in their own phases. |
 
 ## AI tooling
 

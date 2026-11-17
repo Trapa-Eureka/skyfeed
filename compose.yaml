@@ -1,0 +1,104 @@
+# Local platform for SkyFeed: message brokers, database and the simulated data sources.
+# Start:  docker compose up -d --build --wait      Stop: docker compose down      Stop and delete data: docker compose down -v
+# Ports are published on 127.0.0.1 only, and on non-default numbers so they do not collide with brokers
+# or databases already running on the machine. Override them in a .env file (see .env.example).
+name: skyfeed
+
+services:
+  kafka:
+    image: apache/kafka:4.4.0
+    environment:
+      # Single node in KRaft mode: this one process is both broker and controller.
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # INTERNAL is for other containers (kafka:9092); HOST is for programs on the developer machine.
+      KAFKA_LISTENERS: INTERNAL://:9092,HOST://:19092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,HOST://localhost:${KAFKA_PORT:-19092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Topics are created by kafka-init only, so a misspelled topic name is an error.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    ports:
+      - "127.0.0.1:${KAFKA_PORT:-19092}:19092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 10s
+
+  kafka-init:
+    image: apache/kafka:4.4.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        for topic in telemetry.v1 telemetry.dlq.v1 adsb.state.v1; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists \
+            --topic "$$topic" --partitions 3 --replication-factor 1
+        done
+
+  mosquitto:
+    image: eclipse-mosquitto:2.1.2-alpine
+    ports:
+      - "127.0.0.1:${MQTT_PORT:-11883}:1883"
+    volumes:
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/broker/version' -C 1 -W 3 > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: skyfeed
+      POSTGRES_USER: skyfeed
+      # A local development default. Set POSTGRES_PASSWORD in .env to change it; never reuse it anywhere real.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skyfeed}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skyfeed -d skyfeed"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  simulator:
+    build:
+      context: .
+      dockerfile: tools/simulator/Dockerfile
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      MQTT_URL: mqtt://mosquitto:1883
+      REPLAY_PORT: 18090
+      SIM_INTERVAL_MS: ${SIM_INTERVAL_MS:-2000}
+      SIM_SEED: ${SIM_SEED:-skyfeed}
+      REPLAY_SPEED: ${REPLAY_SPEED:-1}
+    ports:
+      - "127.0.0.1:${REPLAY_PORT:-18090}:18090"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:18090/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kafka-data:
+  postgres-data:

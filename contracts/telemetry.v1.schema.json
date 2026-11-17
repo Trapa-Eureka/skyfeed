@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Trapa-Eureka/skyfeed/contracts/telemetry.v1.schema.json",
+  "title": "Sensor telemetry v1",
+  "description": "One reading from a ground station. Published on MQTT topic sensors/{sensorId}/telemetry and forwarded to Kafka topic telemetry.v1 with the sensor id as key.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sensorId", "ts", "seq", "lat", "lon", "temperatureC", "signalDbm", "messageRate"],
+  "properties": {
+    "sensorId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,31}$",
+      "description": "Stable id of the sensor. Must equal the {sensorId} part of the MQTT topic."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the reading was taken, UTC, RFC 3339."
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Counter that grows by one per reading of this sensor. With sensorId it identifies a reading."
+    },
+    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+    "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+    "temperatureC": {
+      "type": "number",
+      "minimum": -60,
+      "maximum": 120,
+      "description": "Receiver enclosure temperature in degrees Celsius."
+    },
+    "signalDbm": {
+      "type": "number",
+      "minimum": -130,
+      "maximum": 0,
+      "description": "Mean received signal level in dBm."
+    },
+    "messageRate": {
+      "type": "number",
+      "minimum": 0,
+      "description": "ADS-B messages decoded per second."
+    }
+  }
+}
