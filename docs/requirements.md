@@ -1,0 +1,61 @@
+# Requirements
+
+Each requirement has an id. A requirement is written here before the code, and the test that covers it names the id (in its display name or a tag). The **Covered by** column is filled in when that test exists and passes; an empty cell means not covered yet.
+
+Phases refer to the [Roadmap](../README.md#roadmap).
+
+## Ingest
+
+| Id | Requirement | Phase | Covered by |
+|---|---|---|---|
+| R-ING-01 | Sensor telemetry published on MQTT topic `sensors/{sensorId}/telemetry` is forwarded to Kafka topic `telemetry.v1`, keyed by sensor id. | 2 | |
+| R-ING-02 | A telemetry message that does not match the schema is not forwarded; it goes to a dead-letter topic with the reason. | 2 | |
+| R-ING-03 | Aircraft state vectors are read from an ADS-B source and published to Kafka topic `adsb.state.v1`, keyed by ICAO 24-bit address. | 2 | |
+| R-ING-04 | The ADS-B source is switchable by configuration: `replay` (a recorded file, the default) or `opensky` (the live API). | 2 | |
+| R-ING-05 | In `opensky` mode the poller never spends more than the configured daily credit budget; when the budget is used up it stops polling and reports it in its health status. | 2 | |
+| R-ING-06 | Replay is deterministic: the same file and speed produce the same sequence of messages. | 1 | |
+
+## Storage and REST API
+
+| Id | Requirement | Phase | Covered by |
+|---|---|---|---|
+| R-API-01 | Telemetry and aircraft states consumed from Kafka are stored in PostgreSQL. | 3 | |
+| R-API-02 | Processing the same Kafka record twice stores it once. | 3 | |
+| R-API-03 | `GET` endpoints return: sensors with their latest reading and status; a telemetry series for one sensor and time range; current aircraft; the recent track of one aircraft. | 3 | |
+| R-API-04 | The API is described by an OpenAPI document served by the service. | 3 | |
+| R-API-05 | Schema changes are applied only through versioned migrations. | 3 | |
+
+## Real-time gateway
+
+| Id | Requirement | Phase | Covered by |
+|---|---|---|---|
+| R-RT-01 | A browser connected by WebSocket receives aircraft updates for the map area it subscribed to, and no others. | 4 | |
+| R-RT-02 | A connected browser receives sensor readings and sensor status changes. | 4 | |
+| R-RT-03 | A slow client does not delay other clients; for a slow client older position updates for the same aircraft are dropped in favour of the newest. | 4 | |
+| R-RT-04 | The gateway sends a heartbeat so a client can tell a quiet feed from a broken connection. | 4 | |
+
+## Operator console
+
+| Id | Requirement | Phase | Covered by |
+|---|---|---|---|
+| R-UI-01 | The map shows each aircraft at its last reported position with heading, callsign and altitude. | 5 | |
+| R-UI-02 | Every value on screen that comes from a feed shows its age, and is visibly marked stale after a configured time. Stale data is never shown as current. | 5 | |
+| R-UI-03 | The console shows the connection state (connected, reconnecting, disconnected) at all times and reconnects by itself. | 5 | |
+| R-UI-04 | A sensor panel lists each sensor with status (online, degraded, offline) and its latest readings; selecting one shows its recent series. | 5 | |
+
+## Reliability and operations
+
+| Id | Requirement | Phase | Covered by |
+|---|---|---|---|
+| R-OPS-01 | A sensor that sends nothing for a configured time is marked offline, and the change is published as an event. | 6 | |
+| R-OPS-02 | An aircraft with no update for a configured time is removed from the live picture. | 6 | |
+| R-OPS-03 | After the message broker or database restarts, every service recovers without a manual restart. | 6 | |
+| R-OPS-04 | Every service exposes health and metrics endpoints, including message lag and the age of the last message per source. | 6 | |
+| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | |
+
+## AI tooling
+
+| Id | Requirement | Phase | Covered by |
+|---|---|---|---|
+| R-AI-01 | An MCP server exposes read-only tools over the message topics (list topics, recent messages, consumer lag). It has no tool that writes. | 7 | |
+| R-AI-02 | A check reports every requirement in this file that no test names. | 7 | |

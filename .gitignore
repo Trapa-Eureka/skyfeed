@@ -1,0 +1,64 @@
+# Principle: commit code only. Never commit secrets, recorded data dumps, or build output.
+
+# ---------- Secrets / credentials ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials.json
+secrets/
+
+# ---------- Java / Maven ----------
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+*.war
+hs_err_pid*
+.quarkus/
+
+# ---------- Node / pnpm ----------
+node_modules/
+.pnpm-store/
+.next/
+dist/
+out/
+*.tsbuildinfo
+next-env.d.ts
+package-lock.json
+yarn.lock
+
+# ---------- Tests ----------
+coverage/
+playwright-report/
+test-results/
+
+# ---------- Local runtime data ----------
+# Broker and database volumes, and live captures. Small replay fixtures are committed under **/fixtures/.
+/data/
+pgdata/
+*.log
+*.db
+
+# ---------- Agent / editor local state ----------
+.claude/settings.local.json
+.claude/*.local.*
+CLAUDE.local.md
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+
+# ---------- Planning documents live outside the repo ----------
+*.pdf
+*.docx
+!docs/**/*.pdf
