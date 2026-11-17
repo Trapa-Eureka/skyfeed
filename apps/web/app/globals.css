@@ -42,6 +42,16 @@ button { font: inherit; color: inherit; }
 .conn[data-state="disconnected"] .conn-shape { border-radius: 0; background: linear-gradient(45deg, transparent 42%, var(--critical) 42% 58%, transparent 58%), linear-gradient(-45deg, transparent 42%, var(--critical) 42% 58%, transparent 58%); }
 .banner { flex-basis: 100%; padding: 6px 10px; border-left: 4px solid var(--warning); background: #2e2812; color: var(--text-primary); }
 
+/* ---- operator notices (optional CMS) ---- */
+.notices { padding: 6px 16px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.notice, .notice-unavailable { margin: 2px 0; font-size: 13px; color: var(--text-secondary); }
+.notice strong { color: var(--text-primary); }
+.notice-tag { display: inline-block; margin-right: 8px; padding: 0 6px; border: 1px solid var(--line); border-radius: 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.notice[data-severity="caution"] .notice-tag { border-color: var(--warning); color: var(--warning); }
+.site { margin: 0 0 10px; font-size: 13px; color: var(--text-secondary); }
+.site strong { color: var(--text-primary); }
+.site-notes { display: block; color: var(--text-muted); }
+
 /* ---- layout ---- */
 .workspace { flex: 1; display: flex; min-height: 0; }
 .map-area { position: relative; flex: 1; min-width: 0; }

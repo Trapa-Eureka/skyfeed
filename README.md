@@ -3,7 +3,7 @@
 One pipeline for two live feeds: **sensor telemetry** from ground stations (MQTT) and **aircraft positions** (ADS-B), brought together through Kafka by Java microservices and shown on a web console that updates over WebSockets.
 
 > **Status: complete (all phases done).**
-> One command starts everything: simulated sensors and recorded (or live) aircraft data flow through MQTT and Kafka into PostgreSQL, a REST API serves the stored data, a WebSocket gateway pushes live updates, and a web console shows the aircraft on a map beside the state of the sensors. Stopping and restarting Kafka, PostgreSQL or the MQTT broker is survived without touching a service ([failure drills](docs/drills.md)). An MCP server gives AI agents a read-only view of the topics. All 26 requirements are named by a test. It runs on a developer machine; it is not deployed anywhere, by choice (see [Roadmap](#roadmap)). Each row in [Features](#features) is `Done` only after it has run on a real machine.
+> One command starts everything: simulated sensors and recorded (or live) aircraft data flow through MQTT and Kafka into PostgreSQL, a REST API serves the stored data, a WebSocket gateway pushes live updates, and a web console shows the aircraft on a map beside the state of the sensors. Stopping and restarting Kafka, PostgreSQL or the MQTT broker is survived without touching a service ([failure drills](docs/drills.md)). An MCP server gives AI agents a read-only view of the topics. All 28 requirements are named by a test. A headless CMS (Strapi) for operator notices and sensor site details can be switched on. It runs on a developer machine; it is not deployed anywhere, by choice (see [Roadmap](#roadmap)). Each row in [Features](#features) is `Done` only after it has run on a real machine.
 
 **Jump to:** [Demo](#demo) · [Quick start](#quick-start) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Roadmap](#roadmap) · [Requirements](docs/requirements.md) · [Message contracts](contracts/README.md) · [Failure drills](docs/drills.md)
 
@@ -72,7 +72,7 @@ Everything in the diagram exists. The console reads the stored state through the
 | Feature | Status |
 |---|---|
 | Short `CLAUDE.md`, safety hook, README check hook, `sync-readme` skill | Done (hook tests pass: `node --test .claude/hooks/*.test.mjs`) |
-| Requirements with ids ([docs/requirements.md](docs/requirements.md)) | Done (26 requirements, each named by at least one test; `pnpm trace` checks it) |
+| Requirements with ids ([docs/requirements.md](docs/requirements.md)) | Done (28 requirements, each named by at least one test; `pnpm trace` checks it) |
 | One-command local stack: Kafka, Mosquitto, PostgreSQL (Docker Compose) | Done (`pnpm stack:smoke` passes: services healthy, topics exist, MQTT and replay data flow, database answers) |
 | Message contracts (JSON Schema) with valid and invalid examples | Done (checked by the simulator tests) |
 | Sensor simulator: five ground stations publishing over MQTT | Done (every reading valid against the contract; repeatable for a given seed) |
@@ -92,9 +92,10 @@ Everything in the diagram exists. The console reads the stored state through the
 | Recovery after Kafka, PostgreSQL or MQTT broker restarts, with no service restarted | Done (`pnpm drill`: each is stopped for 20 s; data flowed again 3 to 30 s after the part was back, over two runs; results in [docs/drills.md](docs/drills.md)) |
 | Metrics on every service: age of the last message per source or topic, Kafka consumer lag, counters | Done (asserted in each service's tests and in the smoke test; nothing collects them yet) |
 | Read-only MCP server over the Kafka topics: list topics, recent messages, consumer lag | Done (tested over HTTP against a real Kafka: the tools answer, and calling them changes nothing; checked by the smoke test) |
-| Requirement-to-test check (`pnpm trace`) | Done (unit-tested; run on this repository: 26 of 26 requirements named by a test) |
+| Requirement-to-test check (`pnpm trace`) | Done (unit-tested; run on this repository: 28 of 28 requirements named by a test) |
 | Local AI review of a change: a `safety-reviewer` subagent and a `review-changes` skill for Claude Code | Done (run once, on the change that added it: 12 findings, checked against the code; the ones that held were fixed before the commit, among them an MCP tool that could return part of a topic as if it were all of it) |
 | Recorded demo, made by a script (`pnpm demo`) | Done (recorded against the running stack; the frames were checked) |
+| Optional headless CMS (Strapi 5): operator notices and sensor site details, shown by the console | Done, opt-in (`pnpm cms:up`; `pnpm cms:check` passed with the CMS up: content served, changes by a visitor refused, console shows it in a real browser). Not part of `pnpm verify` |
 | Cloud deployment | Not done, by choice (see [Roadmap](#roadmap)) |
 
 ## Tech stack
@@ -114,9 +115,10 @@ Everything in the diagram exists. The console reads the stored state through the
 | Build and run | Maven Wrapper (Maven 3.10), pnpm 10, Docker Compose | builds, local stack |
 | Verification | one local script (`pnpm verify`) and a pre-push git hook; no hosted CI | the gate before code leaves the machine |
 | Observability | health endpoints and Micrometer metrics in Prometheus format on all three services | liveness, age of the last message per source and topic, Kafka consumer lag, counters |
+| Content (optional) | Strapi 5 headless CMS on SQLite | operator notices and sensor site details, edited in an admin panel |
 | AI workflow | Claude Code (hooks, skills, a review subagent); MCP server built with Spring AI 2.0 | development, testing, code review; read-only access to the topics for agents |
 
-Everything in the table is in use.
+Everything in the table is in use; the CMS only when it is switched on.
 
 ## Requirements
 
@@ -144,7 +146,7 @@ The repository is not on GitHub yet; the clone URL is where it will live.
 ```bash
 pnpm stack:up      # docker compose up -d --build --wait: Kafka, Mosquitto, PostgreSQL, the simulator, the three services, the console and the MCP server
 pnpm stack:smoke   # the same start, then checks that every part answers
-pnpm stack:down    # stop; data volumes are kept (docker compose down -v also deletes them)
+pnpm stack:down    # stop; data volumes are kept (docker compose --profile cms down -v also deletes them)
 ```
 
 Then open **http://localhost:3000**.
@@ -173,7 +175,7 @@ docker compose logs -f api                                 # follow one service'
 docker compose exec postgres psql -U skyfeed -d skyfeed    # a SQL prompt on the database
 ```
 
-The data lives in two Docker volumes, `skyfeed_postgres-data` and `skyfeed_kafka-data`. They survive `pnpm stack:down`; `docker compose down -v` deletes them.
+The data lives in two Docker volumes, `skyfeed_postgres-data` and `skyfeed_kafka-data`. They survive `pnpm stack:down`; `docker compose --profile cms down -v` deletes them, along with `skyfeed_cms-data` if the optional CMS was used.
 
 To watch the data:
 
@@ -198,6 +200,10 @@ curl http://localhost:8081/q/health/ready   # forwarded and rejected counts, ADS
 - Anything older than its limit is marked, not hidden: an aircraft is `STALE` after 30 seconds without contact and leaves the map after 120; a sensor is `degraded` after 10 seconds and `offline` after 30.
 
 To see the failure behaviour, run `docker compose stop gateway`, watch for half a minute, then `docker compose start gateway`. `docker compose stop simulator` shows the sensors going offline while the connection stays up.
+
+**Add operator notices and site details (optional CMS).** `pnpm cms:up` starts the stack with a Strapi headless CMS; the console then shows the notices under the status bar and, for the selected sensor, the name, location and notes of its site. Edit the content at `http://localhost:1337/admin` (the first visit asks you to create the administrator); the console picks changes up within a minute. `pnpm cms:down` stops it again. The first `cms:up` builds the CMS image, which takes about 1.9 GB of memory, so the command stops the rest of the stack while it builds. Details and the measurements: [cms/README.md](cms/README.md).
+
+![The console with the CMS switched on: a notice under the status bar and the site details of the selected sensor above its charts](docs/images/console-with-cms.png)
 
 **Run the failure drills.** With the stack up, `pnpm drill` stops Kafka, PostgreSQL and the MQTT broker for 20 seconds each, silences the sensors, and checks after each that everything recovers by itself. It takes three to four minutes; what it showed is in [docs/drills.md](docs/drills.md).
 
@@ -282,6 +288,7 @@ Copy `.env.example` to `.env` to change a setting. All are optional.
 | `GATEWAY_PORT` | `8082` | `gateway` HTTP and WebSocket port on the host |
 | `WEB_PORT` | `3000` | console port on the host |
 | `MCP_PORT` | `8083` | MCP server port on the host |
+| `CMS_PORT` | `1337` | port of the optional CMS on the host |
 | `MAP_STYLE_URL` | OpenFreeMap dark style | background map of the console: a MapLibre style URL, or `none` for a plain grid |
 | `ADSB_SOURCE` | `replay` | `replay` reads the recording; `opensky` reads the live API |
 | `ADSB_POLL_INTERVAL` | `10s` | time between requests to the ADS-B source |
@@ -301,6 +308,7 @@ pnpm verify:fast          # the same without the smoke test, the end-to-end test
 pnpm drill                # the failure drills alone; the stack must be running
 pnpm trace                # every requirement must be named by a test
 pnpm demo                 # record the demo video again; the stack must be running, and ffmpeg installed
+pnpm cms:up               # the stack with the optional CMS; cms:check tests it, cms:down stops it
 pnpm test                 # simulator, contract and console unit tests
 pnpm e2e                  # console end-to-end tests in a real browser; the stack must be running
 pnpm typecheck
@@ -337,6 +345,7 @@ skyfeed/
 │   └── gateway/          # Quarkus: Kafka → WebSocket live feed, per-client subscription, heartbeat
 ├── apps/
 │   └── web/              # Next.js operator console: map, sensor panel, charts; unit tests, Playwright end-to-end tests, demo recorder
+├── cms/                  # optional Strapi headless CMS: notices and sensor sites (own npm project, built only in Docker)
 ├── tools/
 │   ├── simulator/        # sensor simulator (MQTT), OpenSky replay server, recorder, the recorded fixture
 │   └── mcp/              # read-only MCP server over the Kafka topics (Spring Boot, Spring AI)
@@ -346,6 +355,7 @@ skyfeed/
 │   ├── smoke.sh          # starts the stack and checks every part
 │   ├── drill.sh          # failure drills: stops and restarts Kafka, PostgreSQL, the MQTT broker and the sensors
 │   ├── trace.mjs         # requirement-to-test check, with its own tests
+│   ├── cms.sh            # start, stop and check the optional CMS
 │   ├── ws-check.mjs      # a WebSocket client that checks the live feed (used by smoke.sh)
 │   └── verify.sh         # every check in one run; the local replacement for CI
 ├── .githooks/
@@ -380,7 +390,9 @@ skyfeed/
 - [x] **Phase 7 — AI tooling.** Read-only MCP server over the topics; a check that lists requirements no test covers; AI review of a change, run locally instead of on pull requests in hosted CI.
 - [x] **Phase 8 — Demo.** A demo video recorded by a script, in place of a cloud deployment.
 
-**Not deployed, on purpose.** The stack needs about 1.2 GB of memory and a Kafka broker running all the time. The free tiers looked at in November 2026 either do not offer that (small always-free machines, services that sleep) or offer it only as a trial credit that ends; the one that does needs a payment card and deletes machines that go over its limits. A project that anyone can start with one command and watch in a recorded demo was judged the better trade. A headless CMS (Strapi) for sensor site details and operator notices was considered and left out: it would add a container and memory for little that the system needs.
+- [x] **Phase 9 — Optional headless CMS (Strapi).** Operator notices and sensor site details, edited in Strapi and shown by the console. Opt-in, because building its image needs about 1.9 GB of memory (measured), more than the default stack may ask of a developer machine.
+
+**Not deployed, on purpose.** The stack needs about 1.2 GB of memory and a Kafka broker running all the time. The free tiers looked at in November 2026 either do not offer that (small always-free machines, services that sleep) or offer it only as a trial credit that ends; the one that does needs a payment card and deletes machines that go over its limits. A project that anyone can start with one command and watch in a recorded demo was judged the better trade.
 
 ## How it is developed
 
@@ -408,9 +420,11 @@ The project is built with an AI coding agent (Claude Code), set up so that the a
 - Nothing is ever deleted from the database, the outbox included. At the default rates the telemetry table grows by about 216,000 rows a day; there is no retention job yet.
 - The sensor status follows from the age of the latest reading, by the sensor's own timestamps, so a sensor whose clock is wrong would get the wrong status. A change is noticed at the next check (every 2 seconds), so its event can be that much late.
 - Readings a sensor takes while the MQTT broker is away are lost; the simulated sensors do not buffer. See [docs/drills.md](docs/drills.md) for this and for what the drills leave out (long outages, crashes, lost volumes, more than one instance of a service).
+- The CMS is optional and outside the main checks: `pnpm verify` and the push hook neither build nor test it, so a change can break it unnoticed until `pnpm cms:check` is run by hand. While `verify` runs it stops a running CMS and does not start it again.
+- CMS content is not live data: it carries no age, and the console asks for it once a minute. Anyone who can reach the CMS port can read it; changing it needs the administrator account, which each machine creates for itself.
 - The metrics are only offered. No Prometheus, dashboard or alert is part of the stack.
 - The MCP server has no authentication and shows message contents to whoever can reach it; it listens on `127.0.0.1` only and refuses other host names and foreign web origins. Those contents come from outside sources; an agent must treat them as data. It covers Kafka only, not MQTT.
-- `pnpm trace` proves that each requirement is named by a test or a scripted check, not that the check is a good one. For R-OPS-03 and R-OPS-05 the naming is a comment in a shell script (`drill.sh`, `smoke.sh`), which `verify:fast` does not run.
+- `pnpm trace` proves that each requirement is named by a test or a scripted check, not that the check is a good one. For R-OPS-03 and R-OPS-05 the naming is a comment in a shell script (`drill.sh`, `smoke.sh`), which `verify:fast` does not run. R-CMS-01 is named by unit tests that `verify` runs, and by a browser test and a script that only `pnpm cms:check` runs.
 - The AI review depends on a model's judgement. It is a second look, not a gate: nothing in `pnpm verify` or the push hook waits for it.
 - The REST API and the console have no authentication, and the API has no paging. Everything is published on `127.0.0.1` only.
 - The live OpenSky source works with anonymous access only; signing in with an OpenSky account is not implemented. Its credit count is kept in memory and starts from zero when `ingest` restarts, so restarting often can spend more than the budget. OpenSky's own limit still applies.

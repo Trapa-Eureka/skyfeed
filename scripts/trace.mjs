@@ -19,6 +19,7 @@ export const TEST_FILES = [
   "scripts/*.test.mjs",
   "scripts/smoke.sh",
   "scripts/drill.sh",
+  "scripts/cms.sh",
 ];
 
 /** The requirements table rows of docs/requirements.md: id and text. */

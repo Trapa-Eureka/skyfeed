@@ -66,6 +66,17 @@ test("R-UI-01 the map shows aircraft with callsign, altitude and heading, as the
     .toBe("match");
 });
 
+test("R-CMS-02 without the optional CMS the console shows no notices, no site details and no error about them", async ({ page }) => {
+  test.skip(process.env.CMS === "1", "the CMS is running in this run; cms.spec.ts covers that");
+  await openConsole(page);
+  expect(await (await page.request.get("/api/cms/notices")).json()).toEqual({ state: "off", items: [] });
+  await sensorRow(page, "gs-iloilo").getByRole("button", { name: "gs-iloilo" }).click();
+  await expect(page.getByTestId("sensor-charts")).toBeVisible();
+  await expect(page.getByTestId("notices")).toHaveCount(0);
+  await expect(page.getByTestId("sensor-site")).toHaveCount(0);
+  await expect(page.getByTestId("load-error")).toHaveCount(0);
+});
+
 test("R-UI-02 every value from the feed is shown with its age, and the ages move", async ({ page }) => {
   await openConsole(page);
 

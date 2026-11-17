@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { ageSeconds, formatAge } from "@/lib/age";
+import type { SensorSite } from "@/lib/cms";
 import type { Reading, Sensor } from "@/lib/types";
 import { LineChart, type Point } from "./LineChart";
 
 const WINDOW_MS = 15 * 60 * 1000;
 
 /** The recent series of the selected sensor (R-UI-04): stored readings from the REST API, extended by the live feed. */
-export function SensorCharts({ sensor, now }: { sensor: Sensor; now: number | null }) {
+export function SensorCharts({ sensor, now, site }: { sensor: Sensor; now: number | null; site: SensorSite | null }) {
   const [readings, setReadings] = useState<Reading[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showTable, setShowTable] = useState(false);
@@ -49,6 +50,13 @@ export function SensorCharts({ sensor, now }: { sensor: Sensor; now: number | nu
       <h2>
         {sensor.sensorId} <span className="h-note">last 15 minutes · latest reading {age === null ? "…" : `${formatAge(age)} ago`}</span>
       </h2>
+      {site && (
+        <p className="site" data-testid="sensor-site">
+          <strong>{site.name}</strong>
+          {site.location && <> · {site.location}</>}
+          {site.notes && <span className="site-notes">{site.notes}</span>}
+        </p>
+      )}
       {error && <p className="empty">The stored readings could not be loaded ({error}). Readings from the live feed are still drawn.</p>}
       <LineChart title="Temperature" unit="°C" points={series((r) => r.temperatureC)} window={window} />
       <LineChart title="Signal level" unit="dBm" points={series((r) => r.signalDbm)} window={window} />

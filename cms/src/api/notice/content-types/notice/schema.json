@@ -1,0 +1,18 @@
+{
+  "kind": "collectionType",
+  "collectionName": "notices",
+  "info": {
+    "singularName": "notice",
+    "pluralName": "notices",
+    "displayName": "Notice",
+    "description": "A short message for the operators, shown at the top of the console"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "title": { "type": "string", "required": true, "maxLength": 120 },
+    "body": { "type": "text", "required": true, "maxLength": 600 },
+    "severity": { "type": "enumeration", "enum": ["info", "caution"], "default": "info", "required": true }
+  }
+}

@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ageSeconds, sensorStatus } from "@/lib/age";
+import { isNotice, isSensorSite, readCmsAnswer, type CmsState, type Notice, type SensorSite } from "@/lib/cms";
 import { LiveConnection } from "@/lib/connection";
 import { isAdsbState, isSensorStatusEvent } from "@/lib/messages";
 import { EMPTY, inArea, pruneAircraft, sensorFromTelemetry, withAircraft, withEvents, withSensors, type Picture } from "@/lib/store";
 import type { AdsbState, Area, ConnectionState, ConsoleConfig, Sensor, SensorStatusEvent, ServerMessage } from "@/lib/types";
 import { AircraftCard } from "./AircraftCard";
 import { MapView } from "./MapView";
+import { Notices } from "./Notices";
 import { SensorCharts } from "./SensorCharts";
 import { SensorEvents } from "./SensorEvents";
 import { SensorPanel } from "./SensorPanel";
@@ -37,6 +39,7 @@ export function Console({ config }: { config: ConsoleConfig }) {
   const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [events, setEvents] = useState<readonly SensorStatusEvent[]>([]);
+  const [cms, setCms] = useState<{ state: CmsState; notices: Notice[]; sites: SensorSite[] }>({ state: "off", notices: [], sites: [] });
   const [selectedSensor, setSelectedSensor] = useState<string | null>(null);
   const [selectedAircraft, setSelectedAircraft] = useState<string | null>(null);
 
@@ -82,6 +85,28 @@ export function Console({ config }: { config: ConsoleConfig }) {
     return () => connectionToGateway.stop();
   }, [config.wsUrl, reload]);
 
+  // Optional CMS content: notices and sensor site details. Asked for at the start and once a minute; when there
+  // is no CMS the answer is "off" and nothing changes on screen.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [notices, sites] = await Promise.all([getJson("/api/cms/notices"), getJson("/api/cms/sensor-sites")]);
+        const n = readCmsAnswer(notices, isNotice);
+        const s = readCmsAnswer(sites, isSensorSite);
+        if (!cancelled) setCms({ state: n.state, notices: n.items, sites: s.items });
+      } catch {
+        if (!cancelled) setCms((current) => (current.state === "off" ? current : { ...current, state: "unavailable" }));
+      }
+    };
+    void load();
+    const timer = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
   useEffect(() => {
     const tick = () => {
       const corrected = Date.now() + clockOffset.current;
@@ -123,6 +148,7 @@ export function Console({ config }: { config: ConsoleConfig }) {
         sensorsNotOnline={sensorsNotOnline}
         loadError={loadError}
       />
+      <Notices state={cms.state} notices={cms.notices} />
       <main className="workspace">
         <section className="map-area" aria-label="Aircraft map">
           <MapView
@@ -142,7 +168,7 @@ export function Console({ config }: { config: ConsoleConfig }) {
         </section>
         <aside className="side" aria-label="Sensors">
           <SensorPanel sensors={sensors} now={now} config={config} selected={selectedSensor} onSelect={setSelectedSensor} />
-          {sensor && <SensorCharts key={sensor.sensorId} sensor={sensor} now={now} />}
+          {sensor && <SensorCharts key={sensor.sensorId} sensor={sensor} now={now} site={cms.sites.find((site) => site.sensorId === sensor.sensorId) ?? null} />}
           <SensorEvents events={events} now={now} />
         </aside>
       </main>

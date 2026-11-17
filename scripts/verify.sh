@@ -35,7 +35,7 @@ if docker info > /dev/null 2>&1; then
   stack_was_running="$(docker compose ps -q 2> /dev/null | head -1)"
   if [ -n "$stack_was_running" ]; then
     step "Pausing the running stack for the service tests"
-    docker compose stop
+    docker compose --profile cms stop # the optional CMS too, if it is running; it is not started again here
   fi
 fi
 
@@ -63,7 +63,7 @@ else
   step "Failure drills (Kafka, PostgreSQL and the MQTT broker are stopped and started; sensors go silent)"
   bash scripts/drill.sh
 
-  [ -n "$stack_was_running" ] || docker compose down
+  [ -n "$stack_was_running" ] || docker compose --profile cms down
 fi
 
 printf '\nAll checks passed.\n'

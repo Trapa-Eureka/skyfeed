@@ -61,3 +61,10 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 |---|---|---|---|
 | R-AI-01 | An MCP server exposes read-only tools over the message topics (list topics, recent messages, consumer lag). It has no tool that writes. | 7 | `tools/mcp`: `TopicToolsTest` (over HTTP against a real Kafka: the tool list, each tool's answer, and that calling them leaves records, committed positions, topics and groups unchanged; plus a scan of the source for any writing call); `scripts/smoke.sh` |
 | R-AI-02 | A check reports every requirement in this file that no test names. | 7 | `scripts/trace.test.mjs`; the check itself is `scripts/trace.mjs` (`pnpm trace`), run by `scripts/verify.sh`. It also reports a test that names a requirement which does not exist. |
+
+## Optional content (CMS)
+
+| Id | Requirement | Phase | Covered by |
+|---|---|---|---|
+| R-CMS-01 | With the optional headless CMS running, the console shows the operator notices, and the site details of the selected sensor, as entered in the CMS. A visitor who is not signed in to the CMS can read that content and cannot change it. | 9 | `apps/web`: `test/cms.test.ts`, `e2e/cms.spec.ts`; `scripts/cms.sh check` (`pnpm cms:check`), which starts nothing itself and is not part of `pnpm verify`: it was run by hand with the CMS up. |
+| R-CMS-02 | Without the CMS, or when it does not answer, the console works unchanged: no notices, no site details, and no error about them. | 9 | `apps/web`: `test/cms.test.ts`, `e2e/console.spec.ts` (the default stack has no CMS) |
