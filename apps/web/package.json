@@ -11,7 +11,8 @@
     "start": "next start --port 3000",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "demo": "node demo/record.mjs"
   },
   "dependencies": {
     "maplibre-gl": "^6.18.0",

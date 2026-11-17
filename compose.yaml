@@ -1,9 +1,13 @@
 # Local platform for SkyFeed: message brokers, database, the simulated data sources and the services.
 # Start:  docker compose up -d --build --wait      Stop: docker compose down      Stop and delete data: docker compose down -v
-# The Java heaps are capped so the whole stack runs in about 1.5 GB of Docker memory.
+# The JVMs are set up small (see x-small-jvm below) so the whole stack fits a Docker with 3 GB of memory.
 # Ports are published on 127.0.0.1 only, and on non-default numbers so they do not collide with brokers
 # or databases already running on the machine. Override them in a .env file (see .env.example).
 name: skyfeed
+
+# JVM settings for the small services. They trade speed for memory, which is the scarce thing on a developer
+# machine: a small heap, the simplest collector, thinner thread stacks, and only the first compiler tier.
+x-small-jvm: &small-jvm "-Xmx128m -XX:+UseSerialGC -Xss512k -XX:ReservedCodeCacheSize=64m -XX:TieredStopAtLevel=1"
 
 services:
   kafka:
@@ -11,7 +15,7 @@ services:
     environment:
       # Single node in KRaft mode: this one process is both broker and controller.
       # The image's default heap is 1 GB, far more than this small single node needs.
-      KAFKA_HEAP_OPTS: -Xms384m -Xmx384m
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
@@ -46,6 +50,9 @@ services:
       kafka:
         condition: service_healthy
     restart: "no"
+    environment:
+      # The command-line tool starts a JVM for each topic; keep each one small.
+      KAFKA_HEAP_OPTS: -Xmx64m
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -116,7 +123,7 @@ services:
       simulator:
         condition: service_healthy
     environment:
-      JAVA_TOOL_OPTIONS: -Xmx192m
+      JAVA_TOOL_OPTIONS: *small-jvm
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       MP_MESSAGING_INCOMING_TELEMETRY_MQTT_HOST: mosquitto
       MP_MESSAGING_INCOMING_TELEMETRY_MQTT_PORT: 1883
@@ -143,7 +150,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      JAVA_TOOL_OPTIONS: -Xmx256m
+      JAVA_TOOL_OPTIONS: -Xmx192m -XX:+UseSerialGC -Xss512k -XX:ReservedCodeCacheSize=64m -XX:TieredStopAtLevel=1
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -165,7 +172,7 @@ services:
       kafka-init:
         condition: service_completed_successfully
     environment:
-      JAVA_TOOL_OPTIONS: -Xmx192m
+      JAVA_TOOL_OPTIONS: *small-jvm
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8082}:8082"
@@ -209,7 +216,7 @@ services:
       kafka-init:
         condition: service_completed_successfully
     environment:
-      JAVA_TOOL_OPTIONS: -Xmx192m
+      JAVA_TOOL_OPTIONS: *small-jvm
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       # Inside the container it must listen on all interfaces to be reachable through the published port,
       # which is bound to 127.0.0.1 of the host below.
