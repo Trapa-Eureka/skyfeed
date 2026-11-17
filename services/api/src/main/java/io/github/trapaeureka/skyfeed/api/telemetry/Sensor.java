@@ -23,6 +23,8 @@ public class Sensor {
     private double signalDbm;
     private double messageRate;
     private Instant updatedAt;
+    private String status;
+    private Instant statusSince;
 
     protected Sensor() {}
 
@@ -60,5 +62,14 @@ public class Sensor {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    /** The status the sensor was last found in by the status monitor: online, degraded or offline. */
+    public String getStatus() {
+        return status;
+    }
+
+    public Instant getStatusSince() {
+        return statusSince;
     }
 }

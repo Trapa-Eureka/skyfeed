@@ -30,7 +30,7 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 | Id | Requirement | Phase | Covered by |
 |---|---|---|---|
 | R-RT-01 | A browser connected by WebSocket receives aircraft updates for the map area it subscribed to, and no others. | 4 | `services/gateway`: `LiveEndpointTest` (real WebSocket connections and Kafka), `MessagesTest`; `scripts/smoke.sh` |
-| R-RT-02 | A connected browser receives sensor readings and sensor status changes. | 4 | `services/gateway`: `LiveEndpointTest`; `scripts/smoke.sh`. Readings only: status changes are not sent yet, because nothing publishes them until R-OPS-01 (Phase 6). |
+| R-RT-02 | A connected browser receives sensor readings and sensor status changes. | 4 | `services/gateway`: `LiveEndpointTest` (readings and status changes); `scripts/smoke.sh`; `apps/web`: `e2e/console.spec.ts` (status changes reach the console while the feed is up) |
 | R-RT-03 | A slow client does not delay other clients; for a slow client older position updates for the same aircraft are dropped in favour of the newest. The same applies to the readings of one sensor. | 4 | `services/gateway`: `ClientSessionTest`, with a simulated client that takes nothing. Not tried with a real congested network connection. |
 | R-RT-04 | The gateway sends a heartbeat so a client can tell a quiet feed from a broken connection. | 4 | `services/gateway`: `LiveEndpointTest`; `scripts/smoke.sh` |
 
@@ -47,10 +47,10 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 
 | Id | Requirement | Phase | Covered by |
 |---|---|---|---|
-| R-OPS-01 | A sensor that sends nothing for a configured time is marked offline, and the change is published as an event. | 6 | |
+| R-OPS-01 | A sensor that sends nothing for a configured time is marked degraded (10 seconds) and then offline (30 seconds), and online again with its next reading. Each change is published once as an event on Kafka topic `sensor.status.v1`; the change and its event are stored in one transaction, so there is no change without an event and no event without a change. | 6 | `services/api`: `SensorStatusTest` (real PostgreSQL and Kafka); `scripts/drill.sh`; `apps/web`: `e2e/console.spec.ts` |
 | R-OPS-02 | An aircraft with no update for a configured time (120 seconds) is removed from the live picture. | 6 | `apps/web`: `test/store.test.ts`. This is the console's picture; the REST API has its own window for current aircraft (60 seconds, R-API-03). |
-| R-OPS-03 | After the message broker or database restarts, every service recovers without a manual restart. | 6 | |
-| R-OPS-04 | Every service exposes health and metrics endpoints, including message lag and the age of the last message per source. | 6 | |
+| R-OPS-03 | After the message broker, the MQTT broker or the database restarts, every service recovers without a manual restart. A database restart loses no data. | 6 | `scripts/drill.sh`: Kafka, PostgreSQL and the MQTT broker are each stopped for 20 seconds and started again; the drill fails unless data flows end to end afterwards with no service container restarted. Results and what is not covered: [drills.md](drills.md). |
+| R-OPS-04 | Every service exposes health and metrics endpoints, including message lag and the age of the last message per source. | 6 | `services/ingest`: `IngestPipelineTest`; `services/api`: `PlatformTest`; `services/gateway`: `LiveEndpointTest`; `scripts/smoke.sh`. Lag is reported by the Kafka consumers (`api`, `gateway`); `ingest` only produces, so it reports the age of the last message per source instead. |
 | R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`: brokers, database, simulator, the three services and the console all start with `docker compose up -d --build --wait` and answer. |
 
 ## AI tooling

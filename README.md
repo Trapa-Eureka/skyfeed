@@ -2,10 +2,10 @@
 
 One pipeline for two live feeds: **sensor telemetry** from ground stations (MQTT) and **aircraft positions** (ADS-B), brought together through Kafka by Java microservices and shown on a web console that updates over WebSockets.
 
-> **Status: works end to end (Phases 0 to 5 done).**
-> One command starts everything: simulated sensors and recorded (or live) aircraft data flow through MQTT and Kafka into PostgreSQL, a REST API serves the stored data, a WebSocket gateway pushes live updates, and a web console shows the aircraft on a map beside the state of the sensors. Still to come: offline events, recovery drills and metrics (Phase 6), AI tooling (Phase 7), and an optional cloud deployment (Phase 8). Each row in [Features](#features) is `Done` only after it has run on a real machine.
+> **Status: works end to end, and comes back after failures (Phases 0 to 6 done).**
+> One command starts everything: simulated sensors and recorded (or live) aircraft data flow through MQTT and Kafka into PostgreSQL, a REST API serves the stored data, a WebSocket gateway pushes live updates, and a web console shows the aircraft on a map beside the state of the sensors. Stopping and restarting Kafka, PostgreSQL or the MQTT broker is survived without touching a service ([failure drills](docs/drills.md)). Still to come: AI tooling (Phase 7) and an optional cloud deployment (Phase 8). Each row in [Features](#features) is `Done` only after it has run on a real machine.
 
-**Jump to:** [Quick start](#quick-start) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Roadmap](#roadmap) · [Requirements](docs/requirements.md) · [Message contracts](contracts/README.md)
+**Jump to:** [Quick start](#quick-start) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Roadmap](#roadmap) · [Requirements](docs/requirements.md) · [Message contracts](contracts/README.md) · [Failure drills](docs/drills.md)
 
 ## Overview
 
@@ -19,9 +19,9 @@ Control rooms watch many live sources at once and have to trust what the screen 
 
 ### What it looks like
 
-The console on the bundled replay data. Every aircraft carries its callsign, altitude and the age of its data; one aircraft and one sensor are selected. Two aircraft have not been heard from for over 30 seconds and are marked stale.
+The console on the bundled replay data. Every aircraft carries its callsign, altitude and the age of its data; one aircraft and one sensor are selected. Aircraft not heard from for over 30 seconds are marked stale. The gaps in the charts are real: the failure drills had stopped the brokers and the sensors a few minutes earlier, and a chart shows no line where there were no readings.
 
-![The console: a map of the central Philippines with labelled aircraft and five sensors, details of one aircraft, the sensor table and three charts for one sensor](docs/images/console.png)
+![The console: a map of the central Philippines with labelled aircraft and five sensors, details of one aircraft, the sensor table, three charts for one sensor and a list of sensor status changes](docs/images/console.png)
 
 The same page 30 seconds after the gateway was stopped. Nothing is updated any more, so nothing is allowed to look current: the connection state says so, every aircraft is marked stale, every sensor is offline with its last values struck through. When the gateway is back the console reconnects by itself.
 
@@ -47,7 +47,7 @@ flowchart LR
 | Service | Framework | Job |
 |---|---|---|
 | `ingest` | Quarkus | MQTT → Kafka bridge for sensor telemetry; ADS-B poller (recorded replay or live OpenSky) → Kafka; validation and dead-letter topic |
-| `api` | Spring Boot, Hibernate | Kafka → PostgreSQL with idempotent writes; REST API for sensors, telemetry series, aircraft and tracks |
+| `api` | Spring Boot, Hibernate | Kafka → PostgreSQL with idempotent writes; REST API for sensors, telemetry series, aircraft and tracks; watches for sensors going silent and publishes status changes through an outbox |
 | `gateway` | Quarkus | Kafka → WebSocket fan-out, filtered by the map area each client subscribed to |
 | `web` | Next.js, React, TypeScript | Operator console: live map, sensor panel, data age and connection state |
 
@@ -60,7 +60,7 @@ Everything in the diagram exists. The console reads the stored state through the
 | Feature | Status |
 |---|---|
 | Short `CLAUDE.md`, safety hook, README check hook, `sync-readme` skill | Done (hook tests pass: `node --test .claude/hooks/*.test.mjs`) |
-| Requirements with ids ([docs/requirements.md](docs/requirements.md)) | Done (26 requirements written; 21 covered so far, one of them in part) |
+| Requirements with ids ([docs/requirements.md](docs/requirements.md)) | Done (26 requirements written; 24 covered, the 2 left are Phase 7) |
 | One-command local stack: Kafka, Mosquitto, PostgreSQL (Docker Compose) | Done (`pnpm stack:smoke` passes: services healthy, topics exist, MQTT and replay data flow, database answers) |
 | Message contracts (JSON Schema) with valid and invalid examples | Done (checked by the simulator tests) |
 | Sensor simulator: five ground stations publishing over MQTT | Done (every reading valid against the contract; repeatable for a given seed) |
@@ -73,11 +73,12 @@ Everything in the diagram exists. The console reads the stored state through the
 | `api`: REST API for sensors, telemetry series, current aircraft and tracks, with an OpenAPI document | Done (same tests; also checked by the stack smoke test) |
 | `gateway`: WebSocket live feed with a subscription per client (map area, sensors) and a heartbeat | Done (tested with real WebSocket connections against Kafka in a container; also checked by the stack smoke test) |
 | `gateway`: a slow client is sent the newest state per aircraft and sensor and never delays the others | Done (unit-tested with a simulated client that takes nothing; not tried on a real congested connection) |
-| Sensor status changes pushed over the live feed | Planned (Phase 6; today a client works the status out from the age of the readings) |
 | `web`: live map with every aircraft's callsign, altitude and heading; details and track of a selected aircraft | Done (end-to-end test in a real browser against the stack, compared with the REST API) |
 | `web`: age on every value, stale marking, connection state, automatic reconnect | Done (end-to-end test that stops and restarts the gateway under the open page; unit tests) |
 | `web`: sensor panel with status and readings, charts of a selected sensor | Done (end-to-end test; unit tests) |
-| Offline events, recovery after broker or database restart, lag and message-age metrics | Planned (Phase 6) |
+| Sensor offline detection: status changes stored and published as events through a transactional outbox, pushed to the console | Done (tested against real PostgreSQL and Kafka; end-to-end test with the simulator stopped; failure drill) |
+| Recovery after Kafka, PostgreSQL or MQTT broker restarts, with no service restarted | Done (`pnpm drill`: each is stopped for 20 s; data flowed again 3 to 30 s after the part was back, over two runs; results in [docs/drills.md](docs/drills.md)) |
+| Metrics on every service: age of the last message per source or topic, Kafka consumer lag, counters | Done (asserted in each service's tests and in the smoke test; nothing collects them yet) |
 | Read-only MCP server over the topics; requirement-to-test check | Planned (Phase 7) |
 | Cloud deployment and recorded demo | Planned (Phase 8, optional) |
 
@@ -87,7 +88,7 @@ Everything in the diagram exists. The console reads the stored state through the
 |---|---|---|
 | Language (services) | Java 21 | all three services |
 | Frameworks | Quarkus 3.40, Spring Boot 4.1 (Spring MVC, Spring Data JPA, Spring for Apache Kafka) | `ingest` and `gateway`; `api` |
-| Persistence | Hibernate (JPA) in validate-only mode, Flyway, PostgreSQL 18 | storage, versioned migrations |
+| Persistence | Hibernate (JPA) in validate-only mode, Flyway, PostgreSQL 18; transactional outbox | storage, versioned migrations, events that match what was stored |
 | Messaging | Apache Kafka 4.4 (KRaft, single node), Eclipse Mosquitto 2.1 (MQTT) | event backbone; sensor protocol |
 | Real time | WebSockets (Quarkus WebSockets Next) | live push to the browser |
 | API | REST, OpenAPI (springdoc), RFC 9457 problem details for errors | history and lookups |
@@ -97,7 +98,7 @@ Everything in the diagram exists. The console reads the stored state through the
 | Testing | JUnit 5, REST Assured, Testcontainers, Quarkus Dev Services, Node test runner, Vitest, Playwright | unit, contract, integration with real brokers, end to end in a real browser |
 | Build and run | Maven Wrapper (Maven 3.10), pnpm 10, Docker Compose | builds, local stack |
 | Verification | one local script (`pnpm verify`) and a pre-push git hook; no hosted CI | the gate before code leaves the machine |
-| Observability | health endpoints, Micrometer counters in `api` | liveness, stored / duplicate / invalid record counts; later lag and message age |
+| Observability | health endpoints and Micrometer metrics in Prometheus format on all three services | liveness, age of the last message per source and topic, Kafka consumer lag, counters |
 | AI workflow | Claude Code (hooks, skills, subagent review), MCP | development, testing, code review |
 
 In use today: everything in the table except MCP (Phase 7).
@@ -166,11 +167,15 @@ curl http://localhost:8081/q/health/ready   # forwarded and rejected counts, ADS
 **Use the console.** Open `http://localhost:3000`.
 
 - The **map** shows each aircraft at its last reported position, turned to its heading, with callsign, altitude and the age of that information. Select an aircraft (click, or Tab to it and press Enter) for its details and its track. Move or zoom the map and the console asks the gateway for that area only.
-- The **panel** lists the sensors with status, latest readings and their age. Select a sensor for charts of its last 15 minutes; hover a chart for a single reading, or open the table below the charts.
+- The **panel** lists the sensors with status, latest readings and their age. Select a sensor for charts of its last 15 minutes; hover a chart for a single reading, or open the table below the charts. Below it, **Sensor events** lists the latest status changes as the backend reported them.
 - The **bar at the top** always shows the connection state, the age of the last heartbeat, how many aircraft are stale and how many sensors are not online.
 - Anything older than its limit is marked, not hidden: an aircraft is `STALE` after 30 seconds without contact and leaves the map after 120; a sensor is `degraded` after 10 seconds and `offline` after 30.
 
 To see the failure behaviour, run `docker compose stop gateway`, watch for half a minute, then `docker compose start gateway`. `docker compose stop simulator` shows the sensors going offline while the connection stays up.
+
+**Run the failure drills.** With the stack up, `pnpm drill` stops Kafka, PostgreSQL and the MQTT broker for 20 seconds each, silences the sensors, and checks after each that everything recovers by itself. It takes three to four minutes; what it showed is in [docs/drills.md](docs/drills.md).
+
+**Read the metrics.** Prometheus text format: `http://localhost:8081/q/metrics` (`ingest`), `http://localhost:8080/actuator/prometheus` (`api`), `http://localhost:8082/q/metrics` (`gateway`). The ones to look at first are listed in [docs/drills.md](docs/drills.md#what-an-operator-would-look-at).
 
 The rest of this section uses the same data without the console.
 
@@ -180,6 +185,7 @@ The rest of this section uses the same data without the console.
 |---|---|
 | `/api/v1/sensors` | every sensor with its latest reading, the age of that reading and a status: `online`, `degraded` (no reading for 10 s) or `offline` (30 s) |
 | `/api/v1/sensors/{sensorId}/telemetry?from=&to=&limit=` | the readings of one sensor in a time range, oldest first; the last 15 minutes by default, at most `limit` (default 1000, up to 5000) newest readings |
+| `/api/v1/sensor-events?limit=` | the most recent changes of sensor status (online, degraded, offline), newest first |
 | `/api/v1/aircraft` | current aircraft: those heard from in the last 60 s |
 | `/api/v1/aircraft/{icao24}/track?minutes=` | the positions of one aircraft over the last `minutes` (default 30), oldest first |
 
@@ -257,8 +263,9 @@ Still planned: OpenSky credentials (only anonymous access works today).
 ### Develop this repository
 
 ```bash
-pnpm verify               # everything below, plus the stack smoke test and the console end-to-end tests
-pnpm verify:fast          # the same without the smoke test and the end-to-end tests
+pnpm verify               # everything below, plus the stack smoke test, the console end-to-end tests and the failure drills
+pnpm verify:fast          # the same without the smoke test, the end-to-end tests and the drills
+pnpm drill                # the failure drills alone; the stack must be running
 pnpm test                 # simulator, contract and console unit tests
 pnpm e2e                  # console end-to-end tests in a real browser; the stack must be running
 pnpm typecheck
@@ -266,13 +273,13 @@ pnpm test:hooks           # tests for the two development hooks
 cd services/ingest && ./mvnw verify     # likewise services/api and services/gateway
 ```
 
-There is no hosted CI. `pnpm verify` runs every check on the developer machine, and after `pnpm hooks:install` git runs it before each push and refuses the push if a check fails. `SKYFEED_VERIFY_FAST=1 git push` skips the stack smoke test and the end-to-end tests; `git push --no-verify` skips the hook.
+There is no hosted CI. `pnpm verify` runs every check on the developer machine, and after `pnpm hooks:install` git runs it before each push and refuses the push if a check fails. `SKYFEED_VERIFY_FAST=1 git push` skips the stack smoke test, the end-to-end tests and the drills; `git push --no-verify` skips the hook.
 
 Docker must be running for both `verify` commands: the service tests start Mosquitto, Kafka and PostgreSQL containers of their own. If the stack is running, `verify` stops it for the duration of those tests and starts it again afterwards (its data is kept): on a Docker setup with 3 GB of memory, running both at once got containers killed.
 
 To work on a service from source, start the stack, stop its copy of that service and run it yourself; it uses the stack's brokers and database on their host ports. For `ingest`: `docker compose stop ingest`, then `./mvnw quarkus:dev` in `services/ingest` (live reload). For `gateway` likewise, in `services/gateway`. For `api`: `docker compose stop api`, then `./mvnw spring-boot:run` in `services/api`. For the console: `docker compose stop web`, then `pnpm --filter @skyfeed/web dev`.
 
-The end-to-end tests need the Playwright browser once (`pnpm --filter @skyfeed/web exec playwright install chromium`; `pnpm verify` does it for you). One of them stops and starts the `gateway` container, so do not run them against a stack someone else is watching.
+The end-to-end tests need the Playwright browser once (`pnpm --filter @skyfeed/web exec playwright install chromium`; `pnpm verify` does it for you). Two of them stop and start containers (`gateway`, `simulator`), and so do the drills, so do not run them against a stack someone else is watching.
 
 A change to the database goes into a new file in `services/api/src/main/resources/db/migration` (`V2__….sql`, and so on); an applied migration is never edited.
 
@@ -291,7 +298,7 @@ skyfeed/
 ├── contracts/            # JSON Schemas for the messages, topic table, valid and invalid examples
 ├── services/
 │   ├── ingest/           # Quarkus: MQTT → Kafka bridge with dead-letter topic, ADS-B poller → Kafka
-│   ├── api/              # Spring Boot + Hibernate: Kafka → PostgreSQL (idempotent), Flyway migrations, REST API, OpenAPI
+│   ├── api/              # Spring Boot + Hibernate: Kafka → PostgreSQL (idempotent), Flyway migrations, REST API, OpenAPI, sensor status monitor, outbox
 │   └── gateway/          # Quarkus: Kafka → WebSocket live feed, per-client subscription, heartbeat
 ├── apps/
 │   └── web/              # Next.js operator console: map, sensor panel, charts; unit tests and Playwright end-to-end tests
@@ -301,12 +308,14 @@ skyfeed/
 │   └── mosquitto/        # broker configuration
 ├── scripts/
 │   ├── smoke.sh          # starts the stack and checks every part
+│   ├── drill.sh          # failure drills: stops and restarts Kafka, PostgreSQL, the MQTT broker and the sensors
 │   ├── ws-check.mjs      # a WebSocket client that checks the live feed (used by smoke.sh)
 │   └── verify.sh         # every check in one run; the local replacement for CI
 ├── .githooks/
 │   └── pre-push          # runs verify.sh before a push (enable with `pnpm hooks:install`)
 ├── docs/
 │   ├── requirements.md   # requirements with ids; tests name the id they cover
+│   ├── drills.md         # what the failure drills showed, and what they do not cover
 │   └── images/           # screenshots used in this README, taken from the running console
 ├── .claude/
 │   ├── settings.json     # registers the hooks
@@ -327,7 +336,7 @@ Planned: `tools/mcp` (the read-only MCP server, Phase 7).
 - [x] **Phase 3 — Storage and REST API (Spring Boot, Hibernate).** Idempotent consumers, Flyway migrations, REST endpoints, OpenAPI, integration tests on real PostgreSQL and Kafka.
 - [x] **Phase 4 — Real-time gateway (Quarkus WebSockets).** Subscription by map area, backpressure for slow clients, heartbeat.
 - [x] **Phase 5 — Operator console (Next.js, MapLibre GL).** Live map, sensor panel, data age, connection state, end-to-end tests against replay data.
-- [ ] **Phase 6 — Reliability and observability.** Offline and stale detection, recovery after a broker or database restart, metrics, failure drills written up.
+- [x] **Phase 6 — Reliability and observability.** Offline and stale detection, recovery after a broker or database restart, metrics, failure drills written up.
 - [ ] **Phase 7 — AI tooling.** Read-only MCP server over the topics; a check that lists requirements no test covers; AI review on pull requests.
 - [ ] **Phase 8 — Cloud and demo (optional).** Container images, deployment to one cloud provider, a recorded demo. A headless CMS (Strapi) for sensor site details and operator notices is a possible addition here.
 
@@ -348,12 +357,14 @@ The project is built with an AI coding agent (Claude Code), set up so that the a
 - The console trusts the clocks: ages compare the gateway's clock (taken from the heartbeat) with the times in the data. A source with a wrong clock would show wrong ages.
 - The console was tested in Chromium only, at desktop size. It has a narrow-screen layout that was not tested.
 - The background map is fetched from a public service (OpenFreeMap) by the browser. Nothing else leaves the machine.
-- The live feed sends changes only and has no memory, so the console loads the current state from the REST API when it connects. Sensor status changes are not pushed yet; the console works the status out from the age of the readings.
+- The live feed sends changes only and has no memory, so the console loads the current state from the REST API when it connects. The status shown per sensor is worked out by the console from the age of the readings, so it stays honest when the feed is down; the status changes pushed by the backend fill the event list.
 - The slow-client behaviour of the gateway was tested with a simulated stuck client, not by congesting a real connection.
 - The live feed has no authentication and does not check where a connection comes from. Like every other port it is published on `127.0.0.1` only.
-- Delivery from MQTT to Kafka is at least once, so a reading can appear twice in `telemetry.v1`; consumers must cope with that (`api` does: it stores such a reading once). If Kafka stays unreachable longer than the producer keeps retrying, the readings of that period are lost: they are logged and counted (`failed` in the health output) but not kept for later. Recovery behaviour is the subject of Phase 6.
-- Nothing is ever deleted from the database. At the default rates the telemetry table grows by about 216,000 rows a day; there is no retention job yet.
-- The sensor status is worked out from the age of the latest reading when the API is asked. Nothing announces that a sensor went offline (that is Phase 6), and a sensor whose clock is wrong would get the wrong status.
+- Delivery from MQTT to Kafka is at least once, so a reading can appear twice in `telemetry.v1`; consumers must cope with that (`api` does: it stores such a reading once). If Kafka stays unreachable longer than the producer keeps retrying (two minutes by default), the readings of that period are lost: they are logged and counted but not kept for later. A 20-second outage was drilled and lost nothing; a longer one was not drilled.
+- Nothing is ever deleted from the database, the outbox included. At the default rates the telemetry table grows by about 216,000 rows a day; there is no retention job yet.
+- The sensor status follows from the age of the latest reading, by the sensor's own timestamps, so a sensor whose clock is wrong would get the wrong status. A change is noticed at the next check (every 2 seconds), so its event can be that much late.
+- Readings a sensor takes while the MQTT broker is away are lost; the simulated sensors do not buffer. See [docs/drills.md](docs/drills.md) for this and for what the drills leave out (long outages, crashes, lost volumes, more than one instance of a service).
+- The metrics are only offered. No Prometheus, dashboard or alert is part of the stack.
 - The REST API and the console have no authentication, and the API has no paging. Everything is published on `127.0.0.1` only.
 - The live OpenSky source works with anonymous access only; signing in with an OpenSky account is not implemented. Its credit count is kept in memory and starts from zero when `ingest` restarts, so restarting often can spend more than the budget. OpenSky's own limit still applies.
 - No automated test calls the live API. The live source was run by hand once (see [Features](#features)).

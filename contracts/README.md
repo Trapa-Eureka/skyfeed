@@ -10,6 +10,7 @@ Every message that crosses a service boundary is described here. The JSON Schema
 | Kafka | `telemetry.v1` | `sensorId` | [telemetry.v1](telemetry.v1.schema.json) | `ingest` | `api`, `gateway` |
 | Kafka | `telemetry.dlq.v1` | the `sensorId` from the MQTT topic, or none if the topic had no usable one | the rejected payload exactly as received; headers `reason` (why it was rejected) and `mqtt-topic` (where it came from) | `ingest` | people, tools |
 | Kafka | `adsb.state.v1` | `icao24` | [adsb.state.v1](adsb.state.v1.schema.json) | `ingest` | `api`, `gateway` |
+| Kafka | `sensor.status.v1` | `sensorId` | [sensor.status.v1](sensor.status.v1.schema.json) | `api` (through its outbox) | `gateway` |
 
 The Kafka topics are created by the `kafka-init` container in [compose.yaml](../compose.yaml), with 3 partitions each. Automatic topic creation is off, so a misspelled topic name fails instead of creating a new topic.
 
@@ -26,13 +27,15 @@ Browsers connect to `gateway` at `ws://…/ws/v1`. All messages are JSON text wi
 | gateway → client | `subscribed` | the subscription now in force | same |
 | gateway → client | `aircraft` | a new state of an aircraft inside the subscribed area; `state` is an [adsb.state.v1](adsb.state.v1.schema.json) message | same |
 | gateway → client | `telemetry` | a new reading of a sensor; `reading` is a [telemetry.v1](telemetry.v1.schema.json) message | same |
+| gateway → client | `sensor-status` | a sensor changed status; `event` is a [sensor.status.v1](sensor.status.v1.schema.json) message | same |
 | gateway → client | `heartbeat` | sent at a fixed interval, data or not | same |
 | gateway → client | `error` | the client's message could not be used; the subscription is unchanged | same |
 
 Things a client must know:
 
-- The feed carries changes only. For the state at the moment of connecting, ask the REST API (`/api/v1/aircraft`, `/api/v1/sensors`), then apply what the feed sends.
+- The feed carries changes only. For the state at the moment of connecting, ask the REST API (`/api/v1/aircraft`, `/api/v1/sensors`, `/api/v1/sensor-events`), then apply what the feed sends.
 - Nothing announces that an aircraft left the area or stopped transmitting; its updates just stop. A client decides from the age of the last update.
+- `sensor.status.v1` events are delivered at least once. An event that arrives twice has the same `eventId`.
 - A client that reads slower than the feed is not sent a backlog. For each aircraft and each sensor it gets the newest message and misses the ones in between.
 - No heartbeat for a few intervals means the connection is broken, even if it still looks open.
 

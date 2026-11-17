@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY, pruneAircraft, sensorFromTelemetry, withAircraft, withSensors } from "../lib/store";
-import type { AdsbState, Telemetry } from "../lib/types";
+import { EMPTY, pruneAircraft, sensorFromTelemetry, withAircraft, withEvents, withSensors } from "../lib/store";
+import type { AdsbState, SensorStatusEvent, Telemetry } from "../lib/types";
 
 const state = (icao24: string, lastContact: string, lat = 14.5, lon = 121): AdsbState => ({
   icao24, callsign: "TEST1", originCountry: null, ts: lastContact, lastContact, lat, lon, baroAltitudeM: 1000, geoAltitudeM: null,
@@ -38,6 +38,21 @@ describe("the live picture", () => {
     const pruned = pruneAircraft(picture, now, 120);
     expect([...pruned.aircraft.keys()]).toEqual(["new222"]);
     expect(pruneAircraft(pruned, now, 120)).toBe(pruned);
+  });
+
+  it("R-RT-02 status changes are listed newest first, and one delivered twice is listed once", () => {
+    const event = (eventId: string, changedAt: string): SensorStatusEvent => ({
+      eventId, sensorId: "gs-a", status: "offline", previousStatus: "degraded", changedAt, lastReadingTs: "2026-11-17T06:00:00Z",
+    });
+    let events = withEvents([], [event("e1", "2026-11-17T06:00:30Z")]);
+    events = withEvents(events, [event("e2", "2026-11-17T06:01:00Z"), event("e1", "2026-11-17T06:00:30Z"), event("e2", "2026-11-17T06:01:00Z")]);
+    expect(events.map((e) => e.eventId)).toEqual(["e2", "e1"]);
+    expect(withEvents(events, [event("e1", "2026-11-17T06:00:30Z")])).toBe(events);
+
+    const many = Array.from({ length: 40 }, (_, i) => event(`m${i}`, new Date(Date.parse("2026-11-17T07:00:00Z") + i * 1000).toISOString()));
+    const kept = withEvents(events, many);
+    expect(kept).toHaveLength(30);
+    expect(kept[0]!.eventId).toBe("m39");
   });
 
   it("an aircraft outside the area being watched is removed when the area changes", () => {

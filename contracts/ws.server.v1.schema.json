@@ -54,6 +54,17 @@
       }
     },
     {
+      "title": "sensor-status",
+      "description": "A sensor changed status. event is a sensor.status.v1 message. Sent to clients that subscribed to sensors.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "event"],
+      "properties": {
+        "type": { "const": "sensor-status" },
+        "event": { "type": "object" }
+      }
+    },
+    {
       "title": "heartbeat",
       "description": "Sent at a fixed interval whether or not there is data, so a quiet feed can be told from a broken connection.",
       "type": "object",

@@ -48,11 +48,22 @@ export interface Area {
   lomax: number;
 }
 
+/** A sensor.status.v1 message: a sensor went from one status to another. */
+export interface SensorStatusEvent {
+  eventId: string;
+  sensorId: string;
+  status: SensorStatus;
+  previousStatus: SensorStatus;
+  changedAt: string;
+  lastReadingTs: string;
+}
+
 export type ServerMessage =
   | { type: "hello"; heartbeatSeconds: number }
   | { type: "subscribed"; area: Area | null; sensors: boolean }
   | { type: "aircraft"; state: AdsbState }
   | { type: "telemetry"; reading: Telemetry }
+  | { type: "sensor-status"; event: SensorStatusEvent }
   | { type: "heartbeat"; ts: string }
   | { type: "error"; message: string };
 

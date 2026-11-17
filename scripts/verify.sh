@@ -2,7 +2,7 @@
 # Runs every check of the repository on this machine. This is what a CI server would do; the project
 # uses no hosted CI, so this script (also run by the pre-push git hook) is the gate.
 # Usage: bash scripts/verify.sh          everything, including the stack smoke test (needs Docker running)
-#        bash scripts/verify.sh --fast   skip the stack smoke test and the console end-to-end tests
+#        bash scripts/verify.sh --fast   skip the stack smoke test, the console end-to-end tests and the failure drills
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -41,7 +41,7 @@ for service in ingest api gateway; do
 done
 
 if $fast; then
-  step "Stack smoke test and console end-to-end tests: skipped (--fast)"
+  step "Stack smoke test, console end-to-end tests and failure drills: skipped (--fast)"
   if [ -n "$stack_was_running" ]; then
     step "Starting the stack again"
     docker compose up -d --wait
@@ -55,6 +55,9 @@ else
   step "Console end-to-end tests (a real browser against the running stack)"
   pnpm --filter @skyfeed/web exec playwright install chromium > /dev/null
   pnpm --filter @skyfeed/web e2e
+
+  step "Failure drills (Kafka, PostgreSQL and the MQTT broker are stopped and started; sensors go silent)"
+  bash scripts/drill.sh
 
   [ -n "$stack_was_running" ] || docker compose down
 fi

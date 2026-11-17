@@ -1,5 +1,6 @@
 package io.github.trapaeureka.skyfeed.api.telemetry;
 
+import io.github.trapaeureka.skyfeed.api.config.FeedAge;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -20,9 +21,11 @@ class TelemetryListener {
     private final Counter stored;
     private final Counter duplicate;
     private final Counter invalid;
+    private final FeedAge feedAge;
 
-    TelemetryListener(TelemetryStore store, ObjectMapper json, MeterRegistry meters) {
+    TelemetryListener(TelemetryStore store, ObjectMapper json, MeterRegistry meters, FeedAge feedAge) {
         this.store = store;
+        this.feedAge = feedAge;
         this.json = json;
         this.stored = meters.counter("skyfeed.telemetry.records", "result", "stored");
         this.duplicate = meters.counter("skyfeed.telemetry.records", "result", "duplicate");
@@ -31,6 +34,7 @@ class TelemetryListener {
 
     @KafkaListener(topics = "telemetry.v1")
     void onRecord(String value) {
+        feedAge.seen("telemetry.v1");
         TelemetryMessage message;
         try {
             message = json.readValue(value, TelemetryMessage.class);

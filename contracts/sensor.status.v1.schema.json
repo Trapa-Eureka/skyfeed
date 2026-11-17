@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Trapa-Eureka/skyfeed/contracts/sensor.status.v1.schema.json",
+  "title": "Sensor status change v1",
+  "description": "A sensor went from one status to another. Published to Kafka topic sensor.status.v1 with the sensor id as key. Delivery is at least once: the same event (same eventId) can arrive more than once.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["eventId", "sensorId", "status", "previousStatus", "changedAt", "lastReadingTs"],
+  "properties": {
+    "eventId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Identifies the change. Use it to recognise a repeated delivery."
+    },
+    "sensorId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,31}$" },
+    "status": { "$ref": "#/$defs/status", "description": "The status from changedAt on." },
+    "previousStatus": { "$ref": "#/$defs/status" },
+    "changedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the change was noticed, UTC, RFC 3339. Up to one check interval later than when it became true."
+    },
+    "lastReadingTs": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the sensor's latest reading was taken, as known at the time of the change."
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": ["online", "degraded", "offline"],
+      "description": "online: a reading within the last 10 s. degraded: none for 10 s. offline: none for 30 s. (Default thresholds.)"
+    }
+  }
+}

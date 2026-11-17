@@ -3,12 +3,16 @@ package io.github.trapaeureka.skyfeed.ingest.adsb;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.quarkus.rest.client.reactive.QuarkusRestClientBuilder;
 import io.quarkus.scheduler.Scheduled;
 import io.smallrye.reactive.messaging.MutinyEmitter;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.WebApplicationException;
 import java.net.URI;
 import java.time.Clock;
@@ -56,6 +60,9 @@ public class AdsbPoller {
     @Channel("adsb-out")
     MutinyEmitter<String> states;
 
+    @Inject
+    MeterRegistry meters;
+
     private PollCycle cycle;
     private CreditBudget budget;
     private PollCycle.Status logged;
@@ -76,6 +83,23 @@ public class AdsbPoller {
         cycle = new PollCycle(() -> fetch(client), this::publish, new StateVectorMapper(source), budget,
                 CreditBudget.creditsFor(lamin, lomin, lamax, lomax), Clock.systemUTC());
         LOG.infof("ADS-B source: %s (%s)", source, live ? openSkyUrl : replayUrl);
+
+        FunctionCounter.builder("skyfeed.adsb.states.published", cycle, PollCycle::published)
+                .description("Aircraft states published to Kafka")
+                .register(meters);
+        Gauge.builder("skyfeed.source.last.message.age.seconds", cycle,
+                        c -> c.lastSuccess() == null ? Double.NaN : (System.currentTimeMillis() - c.lastSuccess().toEpochMilli()) / 1000.0)
+                .tag("source", "adsb")
+                .description("Seconds since the last message arrived from the source")
+                .register(meters);
+        Gauge.builder("skyfeed.adsb.polling", cycle, c -> c.status() == PollCycle.Status.POLLING ? 1 : 0)
+                .description("1 while the ADS-B source is being read successfully, 0 otherwise (starting, source error, budget used up)")
+                .register(meters);
+        if (budget != null) {
+            Gauge.builder("skyfeed.opensky.credits.used", budget, CreditBudget::used)
+                    .description("OpenSky credits spent today (UTC)")
+                    .register(meters);
+        }
     }
 
     @Scheduled(every = "${skyfeed.adsb.poll-interval}", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)

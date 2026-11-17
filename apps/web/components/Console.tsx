@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ageSeconds, sensorStatus } from "@/lib/age";
 import { LiveConnection } from "@/lib/connection";
-import { isAdsbState } from "@/lib/messages";
-import { EMPTY, inArea, pruneAircraft, sensorFromTelemetry, withAircraft, withSensors, type Picture } from "@/lib/store";
-import type { AdsbState, Area, ConnectionState, ConsoleConfig, Sensor, ServerMessage } from "@/lib/types";
+import { isAdsbState, isSensorStatusEvent } from "@/lib/messages";
+import { EMPTY, inArea, pruneAircraft, sensorFromTelemetry, withAircraft, withEvents, withSensors, type Picture } from "@/lib/store";
+import type { AdsbState, Area, ConnectionState, ConsoleConfig, Sensor, SensorStatusEvent, ServerMessage } from "@/lib/types";
 import { AircraftCard } from "./AircraftCard";
 import { MapView } from "./MapView";
 import { SensorCharts } from "./SensorCharts";
+import { SensorEvents } from "./SensorEvents";
 import { SensorPanel } from "./SensorPanel";
 import { StatusBar } from "./StatusBar";
 
@@ -35,6 +36,7 @@ export function Console({ config }: { config: ConsoleConfig }) {
   const [now, setNow] = useState<number | null>(null);
   const [lastHeartbeat, setLastHeartbeat] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [events, setEvents] = useState<readonly SensorStatusEvent[]>([]);
   const [selectedSensor, setSelectedSensor] = useState<string | null>(null);
   const [selectedAircraft, setSelectedAircraft] = useState<string | null>(null);
 
@@ -45,7 +47,8 @@ export function Console({ config }: { config: ConsoleConfig }) {
   /** The feed sends changes only, so the state at this moment comes from the REST API. */
   const reload = useCallback(async () => {
     try {
-      const [aircraft, sensors] = await Promise.all([getJson("/api/v1/aircraft"), getJson("/api/v1/sensors")]);
+      const [aircraft, sensors, recent] = await Promise.all([getJson("/api/v1/aircraft"), getJson("/api/v1/sensors"), getJson("/api/v1/sensor-events?limit=30")]);
+      setEvents((current) => withEvents(current, (Array.isArray(recent) ? recent : []).filter(isSensorStatusEvent)));
       const states = (Array.isArray(aircraft) ? aircraft : []).filter(isAdsbState).filter((state: AdsbState) => !area.current || inArea(state, area.current));
       setPicture((current) => withSensors(withAircraft(current, states), toSensors(sensors)));
       setLoadError(null);
@@ -61,6 +64,8 @@ export function Console({ config }: { config: ConsoleConfig }) {
         if (!area.current || inArea(message.state, area.current)) setPicture((current) => withAircraft(current, [message.state]));
       } else if (message.type === "telemetry") {
         setPicture((current) => withSensors(current, [sensorFromTelemetry(message.reading)]));
+      } else if (message.type === "sensor-status") {
+        setEvents((current) => withEvents(current, [message.event]));
       } else if (message.type === "heartbeat") {
         setLastHeartbeat(message.ts);
       }
@@ -138,6 +143,7 @@ export function Console({ config }: { config: ConsoleConfig }) {
         <aside className="side" aria-label="Sensors">
           <SensorPanel sensors={sensors} now={now} config={config} selected={selectedSensor} onSelect={setSelectedSensor} />
           {sensor && <SensorCharts key={sensor.sensorId} sensor={sensor} now={now} />}
+          <SensorEvents events={events} now={now} />
         </aside>
       </main>
     </div>

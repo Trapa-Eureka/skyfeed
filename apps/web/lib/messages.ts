@@ -1,4 +1,4 @@
-import type { AdsbState, ServerMessage, Telemetry } from "./types";
+import type { AdsbState, SensorStatusEvent, ServerMessage, Telemetry } from "./types";
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isTime = (value: unknown): value is string => typeof value === "string" && !Number.isNaN(Date.parse(value));
@@ -32,6 +32,20 @@ export function isTelemetry(value: unknown): value is Telemetry {
   );
 }
 
+const isStatus = (value: unknown) => value === "online" || value === "degraded" || value === "offline";
+
+/** True when the value has everything the console needs from a sensor.status.v1 message. */
+export function isSensorStatusEvent(value: unknown): value is SensorStatusEvent {
+  return (
+    isObject(value) &&
+    typeof value.eventId === "string" &&
+    typeof value.sensorId === "string" &&
+    isStatus(value.status) &&
+    isStatus(value.previousStatus) &&
+    isTime(value.changedAt)
+  );
+}
+
 /**
  * Reads one text frame from the gateway. Returns null for anything that is not a usable message:
  * the console never shows data it could not check.
@@ -53,6 +67,8 @@ export function parseServerMessage(text: string): ServerMessage | null {
       return isAdsbState(value.state) ? { type: "aircraft", state: value.state } : null;
     case "telemetry":
       return isTelemetry(value.reading) ? { type: "telemetry", reading: value.reading } : null;
+    case "sensor-status":
+      return isSensorStatusEvent(value.event) ? { type: "sensor-status", event: value.event } : null;
     case "heartbeat":
       return isTime(value.ts) ? { type: "heartbeat", ts: value.ts } : null;
     case "error":

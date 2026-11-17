@@ -1,6 +1,6 @@
 package io.github.trapaeureka.skyfeed.api.telemetry;
 
-import io.github.trapaeureka.skyfeed.api.config.SkyfeedProperties;
+import io.github.trapaeureka.skyfeed.api.status.SensorStatusRule;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -41,13 +41,13 @@ class SensorController {
 
     private final SensorRepository sensors;
     private final TelemetryReadingRepository readings;
-    private final SkyfeedProperties properties;
+    private final SensorStatusRule rule;
     private final Clock clock;
 
-    SensorController(SensorRepository sensors, TelemetryReadingRepository readings, SkyfeedProperties properties, Clock clock) {
+    SensorController(SensorRepository sensors, TelemetryReadingRepository readings, SensorStatusRule rule, Clock clock) {
         this.sensors = sensors;
         this.readings = readings;
-        this.properties = properties;
+        this.rule = rule;
         this.clock = clock;
     }
 
@@ -57,7 +57,7 @@ class SensorController {
         Instant now = clock.instant();
         return sensors.findAllByOrderBySensorIdAsc().stream().map(sensor -> {
             Duration age = Duration.between(sensor.getLastTs(), now);
-            return new SensorView(sensor.getSensorId(), sensor.getLat(), sensor.getLon(), status(age), Math.max(0, age.toSeconds()),
+            return new SensorView(sensor.getSensorId(), sensor.getLat(), sensor.getLon(), rule.statusFor(age), Math.max(0, age.toSeconds()),
                     new Reading(sensor.getLastTs(), sensor.getLastSeq(), sensor.getTemperatureC(), sensor.getSignalDbm(), sensor.getMessageRate()));
         }).toList();
     }
@@ -85,12 +85,5 @@ class SensorController {
                 .reversed().stream()
                 .map(r -> new Reading(r.getTs(), r.getSeq(), r.getTemperatureC(), r.getSignalDbm(), r.getMessageRate()))
                 .toList();
-    }
-
-    private String status(Duration age) {
-        if (age.compareTo(properties.sensor().degradedAfter()) < 0) {
-            return "online";
-        }
-        return age.compareTo(properties.sensor().offlineAfter()) < 0 ? "degraded" : "offline";
     }
 }

@@ -135,6 +135,35 @@ test("an aircraft can be selected from the keyboard and its details show the age
   await expect(card).toHaveCount(0);
 });
 
+test("R-OPS-01 R-RT-02 when the sensors go silent the console shows them offline and lists the changes, while the feed stays up", async ({ page }) => {
+  await openConsole(page);
+  await expect(page.locator('[data-testid="sensor-row"][data-status="online"]')).toHaveCount(5);
+  const started = new Date().toISOString().slice(11, 19);
+  const eventsSince = (status: string) =>
+    page.locator(`[data-testid="sensor-event"][data-status="${status}"]`).evaluateAll(
+      (items, since) => new Set(items.filter((item) => (item.querySelector("time")?.textContent ?? "") >= since).map((item) => (item as HTMLElement).dataset.sensorId)).size,
+      started,
+    );
+
+  compose("stop", "simulator");
+  try {
+    await expect(page.locator('[data-testid="sensor-row"][data-status="offline"]')).toHaveCount(5, { timeout: 60_000 });
+    // The changes were noticed by the api service and pushed over the feed, which is still connected.
+    await expect.poll(() => eventsSince("offline"), { timeout: 30_000 }).toBe(5);
+    await expect(connection(page)).toHaveAttribute("data-state", "connected");
+    await expect(page.getByTestId("feed-down")).toHaveCount(0);
+    await expect(page.locator('[data-testid="sensor-event"]').first()).toContainText("offline");
+  } finally {
+    compose("start", "simulator");
+  }
+
+  await expect(page.locator('[data-testid="sensor-row"][data-status="online"]')).toHaveCount(5, { timeout: 60_000 });
+  await expect.poll(() => eventsSince("online"), { timeout: 30_000 }).toBe(5);
+  await expect(page.locator('[data-testid="sensor-event"]').first()).toContainText("online");
+  // Aircraft come from the same simulator; wait until they are current again so the next test starts clean.
+  await expect.poll(() => page.locator('.ac[data-stale="false"]').count(), { timeout: 90_000 }).toBeGreaterThan(5);
+});
+
 test("R-UI-03 R-UI-02 when the live feed goes down the console says so, marks old values stale, and recovers by itself", async ({ page }) => {
   await openConsole(page);
   await expect(page.getByTestId("feed-down")).toHaveCount(0);

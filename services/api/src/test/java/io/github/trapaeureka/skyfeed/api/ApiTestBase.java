@@ -23,7 +23,12 @@ import tools.jackson.databind.ObjectMapper;
  * The whole service on a random port, against PostgreSQL and Kafka in containers. All test classes share one
  * application and one database, so every test uses sensor ids and aircraft addresses of its own.
  */
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT, properties = {
+    // Sensor status is checked often, so the status tests do not wait long.
+    "skyfeed.sensor.check-interval=300ms",
+    // Spring Boot switches metrics export off in tests; the metrics test needs the Prometheus endpoint.
+    "management.prometheus.metrics.export.enabled=true",
+})
 @Import(TestcontainersConfiguration.class)
 abstract class ApiTestBase {
 

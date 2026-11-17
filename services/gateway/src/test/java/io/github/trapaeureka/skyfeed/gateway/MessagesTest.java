@@ -42,6 +42,7 @@ class MessagesTest {
                 Messages.subscribed(new Subscription(null, false)),
                 Messages.aircraft(payload),
                 Messages.telemetry(payload),
+                Messages.sensorStatus(payload),
                 Messages.heartbeat(Instant.parse("2026-11-17T06:00:00.123456Z")),
                 Messages.error("nope"))) {
             assertEquals(List.of(), errors("ws.server.v1.schema.json", message), message);

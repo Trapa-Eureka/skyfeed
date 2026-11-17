@@ -26,4 +26,12 @@ public interface SensorRepository extends JpaRepository<Sensor, String> {
             @Param("signalDbm") double signalDbm, @Param("messageRate") double messageRate);
 
     List<Sensor> findAllByOrderBySensorIdAsc();
+
+    /**
+     * Records a change of status, but only if the sensor is still in the status the caller saw. Returns 1 if this
+     * call made the change, 0 if somebody else already had: so each change is reported once, whoever notices it.
+     */
+    @Modifying
+    @Query("update Sensor s set s.status = :next, s.statusSince = :at where s.sensorId = :sensorId and s.status = :seen")
+    int changeStatus(@Param("sensorId") String sensorId, @Param("seen") String seen, @Param("next") String next, @Param("at") Instant at);
 }

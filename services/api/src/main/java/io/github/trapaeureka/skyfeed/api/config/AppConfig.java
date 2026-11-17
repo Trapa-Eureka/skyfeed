@@ -7,9 +7,11 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.util.backoff.ExponentialBackOff;
 
 @Configuration(proxyBeanMethods = false)
+@EnableScheduling
 @EnableConfigurationProperties(SkyfeedProperties.class)
 public class AppConfig {
 

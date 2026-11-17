@@ -20,10 +20,10 @@ docker compose up -d --build --wait || fail "docker compose up"
 pass "stack started and every service is healthy"
 
 topics="$(docker compose exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list)"
-for topic in telemetry.v1 telemetry.dlq.v1 adsb.state.v1; do
+for topic in telemetry.v1 telemetry.dlq.v1 adsb.state.v1 sensor.status.v1; do
   echo "$topics" | grep -qx "$topic" || fail "Kafka topic $topic is missing"
 done
-pass "Kafka topics exist: telemetry.v1, telemetry.dlq.v1, adsb.state.v1"
+pass "Kafka topics exist: telemetry.v1, telemetry.dlq.v1, adsb.state.v1, sensor.status.v1"
 
 messages="$(docker compose exec -T mosquitto mosquitto_sub -h localhost -t 'sensors/+/telemetry' -C 5 -W 20 || true)"
 count="$(echo "$messages" | grep -c '"sensorId"' || true)"
@@ -88,11 +88,27 @@ points="$(curl -fsS "$API/api/v1/aircraft/$icao/track" | jq_node 'd.length')"
 pass "api stores aircraft states and serves current aircraft and a track ($icao: $points positions)"
 
 paths="$(curl -fsS "$API/v3/api-docs" | jq_node 'Object.keys(d.paths).length')"
-[ "$paths" -eq 4 ] || fail "expected 4 paths in the OpenAPI document, got $paths"
+[ "$paths" -eq 5 ] || fail "expected 5 paths in the OpenAPI document, got $paths"
 pass "api serves its OpenAPI document"
 
 live="$(node scripts/ws-check.mjs "ws://127.0.0.1:${GATEWAY_PORT}/ws/v1")" || fail "live feed: $live"
 pass "gateway pushes hello, heartbeat, aircraft in the subscribed area and telemetry over WebSocket ($live)"
+
+metric() { # url, text the metrics must contain. A Kafka consumer reports its lag only after its first fetch, so allow some time.
+  for _ in $(seq 1 30); do
+    if curl -fsS "$1" 2> /dev/null | grep -qF "$2"; then return 0; fi
+    sleep 1
+  done
+  fail "$1 does not offer the metric $2"
+}
+metric "http://127.0.0.1:${INGEST_PORT:-8081}/q/metrics" 'skyfeed_source_last_message_age_seconds{source="mqtt"}'
+metric "http://127.0.0.1:${INGEST_PORT:-8081}/q/metrics" 'skyfeed_source_last_message_age_seconds{source="adsb"}'
+metric "$API/actuator/prometheus" 'skyfeed_kafka_last_record_age_seconds{topic="telemetry.v1"}'
+metric "$API/actuator/prometheus" 'kafka_consumer_fetch_manager_records_lag'
+metric "$API/actuator/prometheus" 'skyfeed_outbox_waiting'
+metric "http://127.0.0.1:${GATEWAY_PORT}/q/metrics" 'skyfeed_kafka_last_record_age_seconds{topic="telemetry.v1"}'
+metric "http://127.0.0.1:${GATEWAY_PORT}/q/metrics" 'kafka_consumer_fetch_manager_records_lag'
+pass "every service offers metrics: age of the last message per source or topic, and consumer lag"
 
 curl -fsS "http://127.0.0.1:${WEB_PORT}/" | grep -q "SkyFeed" || fail "the console page does not load"
 sensors_via_web="$(curl -fsS "http://127.0.0.1:${WEB_PORT}/api/v1/sensors" | jq_node 'd.length')"

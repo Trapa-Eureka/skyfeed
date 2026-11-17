@@ -44,6 +44,12 @@ public final class Messages {
         return message.toString();
     }
 
+    public static String sensorStatus(JsonNode event) {
+        ObjectNode message = JSON.createObjectNode().put("type", "sensor-status");
+        message.set("event", event);
+        return message.toString();
+    }
+
     public static String heartbeat(Instant now) {
         return JSON.createObjectNode().put("type", "heartbeat").put("ts", now.truncatedTo(ChronoUnit.MILLIS).toString()).toString();
     }

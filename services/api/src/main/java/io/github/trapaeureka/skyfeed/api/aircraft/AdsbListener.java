@@ -1,5 +1,6 @@
 package io.github.trapaeureka.skyfeed.api.aircraft;
 
+import io.github.trapaeureka.skyfeed.api.config.FeedAge;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -20,9 +21,11 @@ class AdsbListener {
     private final Counter stored;
     private final Counter duplicate;
     private final Counter invalid;
+    private final FeedAge feedAge;
 
-    AdsbListener(AircraftStore store, ObjectMapper json, MeterRegistry meters) {
+    AdsbListener(AircraftStore store, ObjectMapper json, MeterRegistry meters, FeedAge feedAge) {
         this.store = store;
+        this.feedAge = feedAge;
         this.json = json;
         this.stored = meters.counter("skyfeed.adsb.records", "result", "stored");
         this.duplicate = meters.counter("skyfeed.adsb.records", "result", "duplicate");
@@ -31,6 +34,7 @@ class AdsbListener {
 
     @KafkaListener(topics = "adsb.state.v1")
     void onRecord(String value) {
+        feedAge.seen("adsb.state.v1");
         AdsbStateMessage message;
         try {
             message = json.readValue(value, AdsbStateMessage.class);

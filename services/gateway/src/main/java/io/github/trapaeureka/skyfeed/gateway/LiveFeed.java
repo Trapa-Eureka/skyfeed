@@ -2,7 +2,11 @@ package io.github.trapaeureka.skyfeed.gateway;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.quarkus.scheduler.Scheduled;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Map;
@@ -13,8 +17,8 @@ import org.jboss.logging.Logger;
 
 /**
  * Passes what arrives on Kafka to the connected clients that asked for it: aircraft states to clients whose map
- * area contains the aircraft (R-RT-01), sensor readings to clients that subscribed to sensors (R-RT-02), and a
- * heartbeat to everyone (R-RT-04). Nothing here waits for a client; see {@link ClientSession}.
+ * area contains the aircraft (R-RT-01), sensor readings and changes of sensor status to clients that subscribed
+ * to sensors (R-RT-02), and a heartbeat to everyone (R-RT-04). Nothing here waits for a client; see {@link ClientSession}.
  */
 @ApplicationScoped
 public class LiveFeed {
@@ -23,6 +27,29 @@ public class LiveFeed {
 
     private final Map<String, ClientSession> sessions = new ConcurrentHashMap<>();
     private final AtomicLong undeliverable = new AtomicLong();
+    /** When the last record of each topic arrived, in ms; 0 until the first one. */
+    private final Map<String, AtomicLong> lastRecord = new ConcurrentHashMap<>();
+
+    @Inject
+    MeterRegistry meters;
+
+    @PostConstruct
+    void registerMetrics() {
+        Gauge.builder("skyfeed.gateway.clients", sessions, Map::size).description("Connected WebSocket clients").register(meters);
+        for (String topic : new String[] {"adsb.state.v1", "telemetry.v1", "sensor.status.v1"}) {
+            AtomicLong at = new AtomicLong();
+            lastRecord.put(topic, at);
+            // No value until a record has arrived: an age measured from 1970 would only mislead.
+            Gauge.builder("skyfeed.kafka.last.record.age.seconds", at, value -> value.get() == 0 ? Double.NaN : (System.currentTimeMillis() - value.get()) / 1000.0)
+                    .tag("topic", topic)
+                    .description("Seconds since the last record of the topic was consumed")
+                    .register(meters);
+        }
+    }
+
+    private void seen(String topic) {
+        lastRecord.get(topic).set(System.currentTimeMillis());
+    }
 
     void add(String connectionId, ClientSession session) {
         sessions.put(connectionId, session);
@@ -49,6 +76,7 @@ public class LiveFeed {
 
     @Incoming("adsb-in")
     public void onAircraftState(String record) {
+        seen("adsb.state.v1");
         JsonNode state = parse(record);
         if (state == null || !state.path("icao24").isTextual() || !state.path("lat").isNumber() || !state.path("lon").isNumber()) {
             undeliverable.incrementAndGet();
@@ -71,6 +99,7 @@ public class LiveFeed {
 
     @Incoming("telemetry-in")
     public void onTelemetry(String record) {
+        seen("telemetry.v1");
         JsonNode reading = parse(record);
         if (reading == null || !reading.path("sensorId").isTextual()) {
             undeliverable.incrementAndGet();
@@ -82,6 +111,27 @@ public class LiveFeed {
             if (session.sensors()) {
                 if (message == null) {
                     message = Messages.telemetry(reading);
+                }
+                session.offer(key, message);
+            }
+        }
+    }
+
+    @Incoming("status-in")
+    public void onSensorStatus(String record) {
+        seen("sensor.status.v1");
+        JsonNode event = parse(record);
+        if (event == null || !event.path("sensorId").isTextual() || !event.path("status").isTextual()) {
+            undeliverable.incrementAndGet();
+            return;
+        }
+        // For a client that is behind, the newest status of a sensor replaces an older one still waiting.
+        String key = "status:" + event.get("sensorId").asText();
+        String message = null;
+        for (ClientSession session : sessions.values()) {
+            if (session.sensors()) {
+                if (message == null) {
+                    message = Messages.sensorStatus(event);
                 }
                 session.offer(key, message);
             }

@@ -257,6 +257,60 @@ class LiveEndpointTest {
     }
 
     @Test
+    @DisplayName("R-RT-02 a client that subscribed to sensors receives changes of sensor status")
+    void sensorStatus() throws Exception {
+        String sensorId = "gs-" + UUID.randomUUID().toString().substring(0, 8);
+        String event = "{\"eventId\":\"" + UUID.randomUUID() + "\",\"sensorId\":\"" + sensorId + "\",\"status\":\"offline\","
+                + "\"previousStatus\":\"degraded\",\"changedAt\":\"2026-11-17T06:00:30Z\",\"lastReadingTs\":\"2026-11-17T06:00:00Z\"}";
+        assertEquals(List.of(), MessagesTest.errors("sensor.status.v1.schema.json", event));
+
+        try (Client client = new Client()) {
+            client.send("{\"type\":\"subscribe\",\"sensors\":true}");
+            client.awaitType("subscribed");
+
+            JsonNode message = client.await("the status change of " + sensorId,
+                    m -> "sensor-status".equals(m.path("type").asText()) && sensorId.equals(m.path("event").path("sensorId").asText()),
+                    () -> kafka.send(new ProducerRecord<>("sensor.status.v1", sensorId, event)));
+
+            assertEquals("offline", message.get("event").get("status").asText());
+            assertEquals("degraded", message.get("event").get("previousStatus").asText());
+            assertEquals(List.of(), MessagesTest.errors("sensor.status.v1.schema.json", message.get("event").toString()));
+        }
+    }
+
+    @Test
+    @DisplayName("R-OPS-04 the metrics endpoint offers consumer lag, the age of the last record per topic and the number of clients")
+    void metrics() throws Exception {
+        try (Client client = new Client()) {
+            client.send("{\"type\":\"subscribe\",\"sensors\":true}");
+            client.awaitType("subscribed");
+            String sensorId = "gs-" + UUID.randomUUID().toString().substring(0, 8);
+            int[] seq = {0};
+            client.await("a reading", m -> "telemetry".equals(m.path("type").asText()), () -> publishReading(sensorId, seq[0]++));
+
+            URI metricsUri = endpoint.resolve("/q/metrics");
+            String[] wanted = {
+                "kafka_consumer_fetch_manager_records_lag",
+                "skyfeed_kafka_last_record_age_seconds{topic=\"telemetry.v1\"}",
+                "skyfeed_gateway_clients 1.0",
+            };
+            String body = "";
+            long deadline = System.nanoTime() + TIMEOUT.toNanos();
+            while (System.nanoTime() < deadline) {
+                body = HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(metricsUri).build(),
+                        java.net.http.HttpResponse.BodyHandlers.ofString()).body();
+                String current = body;
+                if (java.util.Arrays.stream(wanted).allMatch(current::contains)) {
+                    return;
+                }
+                Thread.sleep(500);
+            }
+            String last = body;
+            fail("missing from /q/metrics: " + java.util.Arrays.stream(wanted).filter(name -> !last.contains(name)).toList());
+        }
+    }
+
+    @Test
     @DisplayName("a message the gateway cannot use is answered with an error and the connection stays open")
     void badClientMessage() throws Exception {
         try (Client client = new Client()) {

@@ -101,6 +101,14 @@ tr[data-status="degraded"] .age, tr[data-status="offline"] .age { color: var(--w
 .readings { margin-top: 8px; font-size: 12px; }
 .link { background: none; border: 0; padding: 4px 0; color: var(--text-secondary); text-decoration: underline; cursor: pointer; }
 
+/* ---- sensor events ---- */
+.events { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.events li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.events time { font-family: var(--mono); color: var(--text-muted); }
+.events .event-sensor { font-family: var(--mono); }
+.events .event-change { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.events .event-from { color: var(--text-muted); }
+
 /* ---- aircraft card ---- */
 .card { position: absolute; right: 12px; top: 12px; width: 250px; padding: 12px; background: var(--surface-1); border: 1px solid var(--line); border-radius: 6px; }
 .card[data-stale="true"] { border: 1px dashed var(--warning); }

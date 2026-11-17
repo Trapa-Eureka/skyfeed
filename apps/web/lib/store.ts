@@ -1,5 +1,5 @@
 import { ageSeconds } from "./age";
-import type { AdsbState, Area, Sensor, Telemetry } from "./types";
+import type { AdsbState, Area, Sensor, SensorStatusEvent, Telemetry } from "./types";
 
 /** Everything the console knows about the live picture. Updates return a new object; nothing is changed in place. */
 export interface Picture {
@@ -37,6 +37,17 @@ export function withSensors(picture: Picture, incoming: readonly Sensor[]): Pict
     sensors.set(sensor.sensorId, sensor);
   }
   return sensors ? { ...picture, sensors } : picture;
+}
+
+/**
+ * Adds status changes to the list kept for the event panel: newest first, each event once (the feed and the REST
+ * API can both deliver the same one, and delivery is at least once), at most `keep` entries.
+ */
+export function withEvents(current: readonly SensorStatusEvent[], incoming: readonly SensorStatusEvent[], keep = 30): readonly SensorStatusEvent[] {
+  const known = new Set(current.map((event) => event.eventId));
+  const added = incoming.filter((event) => !known.has(event.eventId) && known.add(event.eventId));
+  if (added.length === 0) return current;
+  return [...current, ...added].sort((a, b) => Date.parse(b.changedAt) - Date.parse(a.changedAt)).slice(0, keep);
 }
 
 export function sensorFromTelemetry(reading: Telemetry): Sensor {

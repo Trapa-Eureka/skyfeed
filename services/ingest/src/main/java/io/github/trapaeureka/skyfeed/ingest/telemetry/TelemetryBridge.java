@@ -2,11 +2,16 @@ package io.github.trapaeureka.skyfeed.ingest.telemetry;
 
 import io.github.trapaeureka.skyfeed.ingest.telemetry.TelemetryCheck.Accepted;
 import io.github.trapaeureka.skyfeed.ingest.telemetry.TelemetryCheck.Rejected;
+import io.micrometer.core.instrument.FunctionCounter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.MutinyEmitter;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import io.smallrye.reactive.messaging.mqtt.MqttMessage;
+import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.kafka.common.header.internals.RecordHeaders;
@@ -29,6 +34,25 @@ public class TelemetryBridge {
     private final AtomicLong forwarded = new AtomicLong();
     private final AtomicLong rejected = new AtomicLong();
     private final AtomicLong failed = new AtomicLong();
+    /** When the last MQTT message arrived, in ms; 0 until the first one. */
+    private final AtomicLong lastMessage = new AtomicLong();
+
+    @Inject
+    MeterRegistry meters;
+
+    @PostConstruct
+    void registerMetrics() {
+        for (var counter : java.util.Map.of("forwarded", forwarded, "rejected", rejected, "failed", failed).entrySet()) {
+            FunctionCounter.builder("skyfeed.telemetry.messages", counter.getValue(), AtomicLong::get)
+                    .tag("result", counter.getKey())
+                    .description("MQTT telemetry messages by what happened to them")
+                    .register(meters);
+        }
+        Gauge.builder("skyfeed.source.last.message.age.seconds", lastMessage, at -> at.get() == 0 ? Double.NaN : (System.currentTimeMillis() - at.get()) / 1000.0)
+                .tag("source", "mqtt")
+                .description("Seconds since the last message arrived from the source")
+                .register(meters);
+    }
 
     @Channel("telemetry-out")
     MutinyEmitter<String> telemetry;
@@ -38,6 +62,7 @@ public class TelemetryBridge {
 
     @Incoming("telemetry-mqtt")
     public Uni<Void> onMessage(Message<byte[]> message) {
+        lastMessage.set(System.currentTimeMillis());
         String topic = message instanceof MqttMessage<?> mqtt ? mqtt.getTopic() : null;
 
         Uni<Void> sent = switch (check.check(topic, message.getPayload())) {

@@ -11,6 +11,7 @@
     "stack:down": "docker compose down",
     "stack:smoke": "bash scripts/smoke.sh",
     "e2e": "pnpm --filter @skyfeed/web e2e",
+    "drill": "bash scripts/drill.sh",
     "verify": "bash scripts/verify.sh",
     "verify:fast": "bash scripts/verify.sh --fast",
     "hooks:install": "git config core.hooksPath .githooks"

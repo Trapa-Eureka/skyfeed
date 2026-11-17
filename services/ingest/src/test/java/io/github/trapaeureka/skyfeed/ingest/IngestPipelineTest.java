@@ -70,7 +70,7 @@ class IngestPipelineTest {
     }
 
     @Test
-    @DisplayName("R-ING-01 a reading published on MQTT arrives on telemetry.v1, unchanged, keyed by sensor id")
+    @DisplayName("R-ING-01 R-OPS-04 a reading published on MQTT arrives on telemetry.v1, unchanged, keyed by sensor id, and is counted")
     void forwardsTelemetry() {
         // The broker does not keep messages for a subscriber that is not connected yet, so publish until one arrives.
         int[] seq = {0};
@@ -84,6 +84,15 @@ class IngestPipelineTest {
         assertEquals("gs-test-a", record.key());
         given().when().get("/q/health/ready").then().statusCode(200)
                 .body("checks.find { it.name == 'telemetry-bridge' }.data.forwarded", greaterThan(0));
+
+        // R-OPS-04: the same counts, and the age of the last message from each source, as metrics.
+        String metrics = given().when().get("/q/metrics").then().statusCode(200).extract().asString();
+        for (String wanted : List.of("skyfeed_telemetry_messages_total{result=\"forwarded\"}",
+                "skyfeed_source_last_message_age_seconds{source=\"mqtt\"}",
+                "skyfeed_source_last_message_age_seconds{source=\"adsb\"}",
+                "skyfeed_adsb_polling", "kafka_producer_record_send_total")) {
+            assertTrue(metrics.contains(wanted), "missing from /q/metrics: " + wanted);
+        }
     }
 
     @Test
