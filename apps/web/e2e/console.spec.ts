@@ -109,10 +109,13 @@ test("R-UI-04 the sensor panel lists every sensor with status and readings; sele
   }
   await expect(charts.getByTestId("chart-readout").first()).toContainText(/latest [\d.]+ °C/);
 
-  // The series grows as readings arrive over the live feed.
+  // The series moves on as readings arrive over the live feed: its newest point gets newer. (The number of points
+  // is no measure of that. The chart shows a 15-minute window, so when readings from 15 minutes ago are sliding
+  // out of it, one point leaves for each one that arrives and the count stands still.)
   const line = charts.getByTestId("chart-line").first();
-  const before = Number(await line.getAttribute("data-points"));
-  await expect.poll(async () => Number(await line.getAttribute("data-points")), { timeout: 20_000 }).toBeGreaterThan(before);
+  const before = Number(await line.getAttribute("data-latest"));
+  expect(before).toBeGreaterThan(0);
+  await expect.poll(async () => Number(await line.getAttribute("data-latest")), { timeout: 20_000 }).toBeGreaterThan(before);
 
   await charts.getByRole("button", { name: /as a table/ }).click();
   await expect(charts.locator("table.readings tbody tr").first()).toBeVisible();

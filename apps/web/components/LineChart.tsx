@@ -94,7 +94,7 @@ export function LineChart({ title, unit, points, window, digits = 1 }: Props) {
         ))}
         <text className="tick" x={PAD.left} y={H - 4} textAnchor="start">{hhmmss(from)}</text>
         <text className="tick" x={W - PAD.right} y={H - 4} textAnchor="end">{hhmmss(to)}</text>
-        <path className="series" d={path} data-testid="chart-line" data-points={visible.length} data-segments={parts.length} />
+        <path className="series" d={path} data-testid="chart-line" data-points={visible.length} data-segments={parts.length} data-latest={latest?.t ?? ""} />
         {/* A reading with no neighbour close enough to join has no line: it is drawn as a small dot. */}
         {parts.filter((part) => part.length === 1).map((part) => (
           <circle key={part[0]!.t} className="lone" cx={scale.x(part[0]!.t)} cy={scale.y(part[0]!.v)} r={1.5} />
