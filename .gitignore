@@ -62,3 +62,7 @@ Thumbs.db
 *.pdf
 *.docx
 !docs/**/*.pdf
+
+# ---------- Web console ----------
+# Copied from the maplibre-gl package before each build (apps/web/scripts/copy-map-worker.mjs).
+/apps/web/public/maplibre/

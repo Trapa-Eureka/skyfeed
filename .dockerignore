@@ -1,5 +1,8 @@
 **/node_modules
 **/target
+**/.next
+**/test-results
+**/playwright-report
 .git
 .claude
 docs

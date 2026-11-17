@@ -38,20 +38,20 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 
 | Id | Requirement | Phase | Covered by |
 |---|---|---|---|
-| R-UI-01 | The map shows each aircraft at its last reported position with heading, callsign and altitude. | 5 | |
-| R-UI-02 | Every value on screen that comes from a feed shows its age, and is visibly marked stale after a configured time. Stale data is never shown as current. | 5 | |
-| R-UI-03 | The console shows the connection state (connected, reconnecting, disconnected) at all times and reconnects by itself. | 5 | |
-| R-UI-04 | A sensor panel lists each sensor with status (online, degraded, offline) and its latest readings; selecting one shows its recent series. | 5 | |
+| R-UI-01 | The map shows each aircraft at its last reported position with heading, callsign and altitude. | 5 | `apps/web`: `e2e/console.spec.ts` (a real browser against the stack, compared with the REST API), `test/age.test.ts`, `test/store.test.ts`. That a marker sits at the right place on the map is left to MapLibre and is not asserted. |
+| R-UI-02 | Every value on screen that comes from a feed shows its age, and is visibly marked stale after a configured time (aircraft: 30 seconds since last contact; sensors: the degraded and offline thresholds). Stale data is never shown as current, and a chart shows a gap where readings are missing. | 5 | `apps/web`: `e2e/console.spec.ts` (ages shown; with the gateway stopped every aircraft is marked stale and every sensor offline), `test/age.test.ts`, `test/messages.test.ts`, `test/chart.test.ts` |
+| R-UI-03 | The console shows the connection state (connected, reconnecting, disconnected) at all times and reconnects by itself. Reconnecting becomes disconnected after 15 seconds without the feed; a connection that is open but silent for three heartbeat intervals counts as lost. | 5 | `apps/web`: `e2e/console.spec.ts` (the gateway is stopped and started again under the open page), `test/connection.test.ts` |
+| R-UI-04 | A sensor panel lists each sensor with status (online, degraded, offline) and its latest readings; selecting one shows its recent series. | 5 | `apps/web`: `e2e/console.spec.ts`, `test/age.test.ts`, `test/store.test.ts` |
 
 ## Reliability and operations
 
 | Id | Requirement | Phase | Covered by |
 |---|---|---|---|
 | R-OPS-01 | A sensor that sends nothing for a configured time is marked offline, and the change is published as an event. | 6 | |
-| R-OPS-02 | An aircraft with no update for a configured time is removed from the live picture. | 6 | |
+| R-OPS-02 | An aircraft with no update for a configured time (120 seconds) is removed from the live picture. | 6 | `apps/web`: `test/store.test.ts`. This is the console's picture; the REST API has its own window for current aircraft (60 seconds, R-API-03). |
 | R-OPS-03 | After the message broker or database restarts, every service recovers without a manual restart. | 6 | |
 | R-OPS-04 | Every service exposes health and metrics endpoints, including message lag and the age of the last message per source. | 6 | |
-| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`, for what exists so far: brokers, database, simulator, `ingest`, `api` and `gateway`. The services join the stack in their own phases. |
+| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`: brokers, database, simulator, the three services and the console all start with `docker compose up -d --build --wait` and answer. |
 
 ## AI tooling
 

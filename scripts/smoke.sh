@@ -10,6 +10,7 @@ REPLAY_PORT="${REPLAY_PORT:-18090}"
 API_PORT="${API_PORT:-8080}"
 API="http://127.0.0.1:${API_PORT}"
 GATEWAY_PORT="${GATEWAY_PORT:-8082}"
+WEB_PORT="${WEB_PORT:-3000}"
 
 pass() { echo "ok    $1"; }
 fail() { echo "FAIL  $1" >&2; exit 1; }
@@ -92,6 +93,11 @@ pass "api serves its OpenAPI document"
 
 live="$(node scripts/ws-check.mjs "ws://127.0.0.1:${GATEWAY_PORT}/ws/v1")" || fail "live feed: $live"
 pass "gateway pushes hello, heartbeat, aircraft in the subscribed area and telemetry over WebSocket ($live)"
+
+curl -fsS "http://127.0.0.1:${WEB_PORT}/" | grep -q "SkyFeed" || fail "the console page does not load"
+sensors_via_web="$(curl -fsS "http://127.0.0.1:${WEB_PORT}/api/v1/sensors" | jq_node 'd.length')"
+[ "$sensors_via_web" -ge 5 ] || fail "the console's /api/v1 proxy returned $sensors_via_web sensors"
+pass "web console loads and reaches the api service through its own /api/v1 path"
 
 docker compose exec -T postgres psql -U skyfeed -d skyfeed -tAc 'select 1' | grep -qx 1 || fail "PostgreSQL does not answer"
 pass "PostgreSQL answers"
