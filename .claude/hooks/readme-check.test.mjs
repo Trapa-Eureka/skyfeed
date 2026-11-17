@@ -21,7 +21,8 @@ test("does not nudge for files outside the watched folders", () => {
   assert.equal(evaluate([".claude/hooks/x.mjs", "CLAUDE.md", ".gitignore"]).nudge, false);
 });
 
-test("watches compose files and CI workflows", () => {
+test("watches compose files, scripts and git hooks", () => {
   assert.equal(evaluate(["compose.yaml"]).nudge, true);
-  assert.equal(evaluate([".github/workflows/ci.yml"]).nudge, true);
+  assert.equal(evaluate(["scripts/verify.sh"]).nudge, true);
+  assert.equal(evaluate([".githooks/pre-push"]).nudge, true);
 });

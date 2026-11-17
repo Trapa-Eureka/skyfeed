@@ -9,6 +9,9 @@
     "test:hooks": "node --test .claude/hooks/*.test.mjs",
     "stack:up": "docker compose up -d --build --wait",
     "stack:down": "docker compose down",
-    "stack:smoke": "bash scripts/smoke.sh"
+    "stack:smoke": "bash scripts/smoke.sh",
+    "verify": "bash scripts/verify.sh",
+    "verify:fast": "bash scripts/verify.sh --fast",
+    "hooks:install": "git config core.hooksPath .githooks"
   }
 }

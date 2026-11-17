@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Runs all checks before a push. Enabled once per clone with `pnpm hooks:install`.
+# Skip the slow stack test with SKYFEED_VERIFY_FAST=1; skip everything with `git push --no-verify`.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+if [ "${SKYFEED_VERIFY_FAST:-}" = "1" ]; then
+  exec bash scripts/verify.sh --fast
+fi
+exec bash scripts/verify.sh

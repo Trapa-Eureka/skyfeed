@@ -56,7 +56,7 @@ The diagram is the target. Today the left side exists (simulator, Mosquitto, the
 | Sensor simulator: five ground stations publishing over MQTT | Done (every reading valid against the contract; repeatable for a given seed) |
 | ADS-B replay server in the OpenSky format, from a real recording | Done (29 frames recorded from the live API on 2026-11-17; deterministic replay tested) |
 | Service skeletons: `ingest`, `gateway` (Quarkus), `api` (Spring Boot) | Done (each builds and passes one health test with `./mvnw verify`; no features yet) |
-| CI workflow (GitHub Actions) | Written, not yet run (the repository has not been pushed) |
+| Local verification in place of hosted CI: `pnpm verify`, also run by a pre-push git hook | Done (`pnpm verify` passes: hooks, typecheck, tests, three service builds, stack smoke test) |
 | `ingest`: MQTT → Kafka bridge with validation and dead-letter topic | Planned (Phase 2) |
 | `ingest`: ADS-B poller with replay mode and an OpenSky credit budget | Planned (Phase 2) |
 | `api`: idempotent Kafka → PostgreSQL, REST API, OpenAPI document | Planned (Phase 3) |
@@ -80,7 +80,8 @@ The diagram is the target. Today the left side exists (simulator, Mosquitto, the
 | Frontend | TypeScript, React, Next.js, MapLibre GL | operator console |
 | Simulator | TypeScript 7 on Node.js 24 (run directly, no build step), MQTT.js | simulated sensors, ADS-B replay server |
 | Testing | JUnit 5, REST Assured, Node test runner, Ajv; later Testcontainers, Vitest, Playwright | unit, contract, integration with real brokers, end to end |
-| Build and run | Maven Wrapper (Maven 3.10), pnpm 10, Docker Compose, GitHub Actions | builds, local stack, CI |
+| Build and run | Maven Wrapper (Maven 3.10), pnpm 10, Docker Compose | builds, local stack |
+| Verification | one local script (`pnpm verify`) and a pre-push git hook; no hosted CI | the gate before code leaves the machine |
 | Observability | health endpoints; later Micrometer | liveness; lag and message age |
 | AI workflow | Claude Code (hooks, skills, subagent review), MCP | development, testing, code review |
 
@@ -101,6 +102,7 @@ Developed on macOS (Apple silicon). Linux and Windows have not been tried.
 git clone https://github.com/Trapa-Eureka/skyfeed.git
 cd skyfeed
 pnpm install
+pnpm hooks:install   # once per clone: run all checks before every push
 ```
 
 The repository is not on GitHub yet; the clone URL is where it will live.
@@ -155,11 +157,15 @@ Still planned: switching the ADS-B source to the live API with credentials and a
 ### Develop this repository
 
 ```bash
+pnpm verify               # everything below, plus the stack smoke test (needs Docker running)
+pnpm verify:fast          # the same without the stack smoke test
 pnpm test                 # simulator and contract tests
 pnpm typecheck
 pnpm test:hooks           # tests for the two development hooks
 cd services/ingest && ./mvnw verify     # likewise services/api and services/gateway
 ```
+
+There is no hosted CI. `pnpm verify` runs every check on the developer machine, and after `pnpm hooks:install` git runs it before each push and refuses the push if a check fails. `SKYFEED_VERIFY_FAST=1 git push` skips the stack smoke test; `git push --no-verify` skips the hook.
 
 The service skeletons listen on 8081 (`ingest`), 8080 (`api`) and 8082 (`gateway`) when started by hand (`./mvnw quarkus:dev`, `./mvnw spring-boot:run`). They are not part of the Compose stack yet.
 
@@ -185,10 +191,12 @@ skyfeed/
 ├── infra/
 │   └── mosquitto/        # broker configuration
 ├── scripts/
-│   └── smoke.sh          # starts the stack and checks every part
+│   ├── smoke.sh          # starts the stack and checks every part
+│   └── verify.sh         # every check in one run; the local replacement for CI
+├── .githooks/
+│   └── pre-push          # runs verify.sh before a push (enable with `pnpm hooks:install`)
 ├── docs/
 │   └── requirements.md   # requirements with ids; tests name the id they cover
-├── .github/workflows/    # CI: tools, the three services, stack smoke test
 ├── .claude/
 │   ├── settings.json     # registers the hooks
 │   ├── hooks/            # block-dangerous (before a tool runs), readme-check (when a turn ends), and their tests
@@ -203,7 +211,7 @@ Planned: `apps/web` (the operator console, Phase 5) and `tools/mcp` (the read-on
 ## Roadmap
 
 - [x] **Phase 0 — Guard rails and intent.** Short `CLAUDE.md`, hooks, the `sync-readme` skill, requirements with ids, this README.
-- [x] **Phase 1 — Local platform and contracts.** Docker Compose with Kafka, Mosquitto and PostgreSQL; topic names and JSON Schemas; a recorded ADS-B replay file and a sensor simulator so every later test is local and repeatable; service skeletons with the Maven Wrapper; CI.
+- [x] **Phase 1 — Local platform and contracts.** Docker Compose with Kafka, Mosquitto and PostgreSQL; topic names and JSON Schemas; a recorded ADS-B replay file and a sensor simulator so every later test is local and repeatable; service skeletons with the Maven Wrapper; one local verification script in place of hosted CI.
 - [ ] **Phase 2 — Ingest (Quarkus).** MQTT → Kafka bridge with validation and a dead-letter topic; ADS-B poller with replay and live modes and a credit budget.
 - [ ] **Phase 3 — Storage and REST API (Spring Boot, Hibernate).** Idempotent consumers, Flyway migrations, REST endpoints, OpenAPI, integration tests on real PostgreSQL and Kafka.
 - [ ] **Phase 4 — Real-time gateway (Quarkus WebSockets).** Subscription by map area, backpressure for slow clients, heartbeat.
@@ -225,7 +233,7 @@ The project is built with an AI coding agent (Claude Code), set up so that the a
 ## Known limitations
 
 - The services do nothing yet; see **Status**. Data reaches MQTT and the replay server, but nothing moves it into Kafka or the database until Phase 2 and 3.
-- The CI workflow has not run on GitHub yet. Its steps were run by hand on one machine (macOS, Apple silicon).
+- There is no hosted CI. Checks run only on a developer machine (so far one: macOS, Apple silicon), and the pre-push hook protects only clones where `pnpm hooks:install` was run.
 - The local stack has no authentication or TLS (MQTT is anonymous, Kafka is plaintext, the database password is a known default). It is for a developer machine only, which is why every port is bound to `127.0.0.1`.
 - The replay recording is short (about five minutes) and loops, so aircraft jump back to where they started at the end of each loop.
 - The hooks act only inside Claude Code sessions in this repository. They match command text, so they are a safety net and not a sandbox.

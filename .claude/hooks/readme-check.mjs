@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 // Paths whose changes can make the README wrong (features, commands, layout, status).
-const WATCHED = /^(services|apps|tools|infra|contracts|docs)\/|^(compose[^/]*\.ya?ml|docker-compose[^/]*\.ya?ml|package\.json|pnpm-workspace\.yaml|\.github\/workflows\/)/;
+const WATCHED = /^(services|apps|tools|infra|contracts|docs|scripts|\.githooks)\/|^(compose[^/]*\.ya?ml|docker-compose[^/]*\.ya?ml|package\.json|pnpm-workspace\.yaml)/;
 
 /** @param {string} porcelain output of `git status --porcelain` */
 export function changedPaths(porcelain) {
