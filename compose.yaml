@@ -22,6 +22,8 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Keep the log on the named volume below, so topics and offsets survive `docker compose down`.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       # Topics are created by kafka-init only, so a misspelled topic name is an error.
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     ports:
@@ -127,6 +129,28 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
+
+  api:
+    build:
+      context: services/api
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-skyfeed}
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
 
 volumes:
   kafka-data:

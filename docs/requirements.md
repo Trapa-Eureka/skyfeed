@@ -19,11 +19,11 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 
 | Id | Requirement | Phase | Covered by |
 |---|---|---|---|
-| R-API-01 | Telemetry and aircraft states consumed from Kafka are stored in PostgreSQL. | 3 | |
-| R-API-02 | Processing the same Kafka record twice stores it once. | 3 | |
-| R-API-03 | `GET` endpoints return: sensors with their latest reading and status; a telemetry series for one sensor and time range; current aircraft; the recent track of one aircraft. | 3 | |
-| R-API-04 | The API is described by an OpenAPI document served by the service. | 3 | |
-| R-API-05 | Schema changes are applied only through versioned migrations. | 3 | |
+| R-API-01 | Telemetry and aircraft states consumed from Kafka are stored in PostgreSQL. | 3 | `services/api`: `StoreTest`, `KafkaToDatabaseTest` (real PostgreSQL and Kafka); `scripts/smoke.sh` |
+| R-API-02 | Processing the same Kafka record twice stores it once. The same holds for two records with the same content: a reading is identified by sensor, time and sequence number, an aircraft state by address and last-contact time. | 3 | `services/api`: `StoreTest`, `KafkaToDatabaseTest` |
+| R-API-03 | `GET` endpoints return: sensors with their latest reading and status; a telemetry series for one sensor and time range; current aircraft; the recent track of one aircraft. The status of a sensor follows from the age of its latest reading: online, then degraded after 10 seconds, then offline after 30 seconds (both configurable). | 3 | `services/api`: `RestApiTest`; `scripts/smoke.sh` |
+| R-API-04 | The API is described by an OpenAPI document served by the service. | 3 | `services/api`: `PlatformTest`; `scripts/smoke.sh` |
+| R-API-05 | Schema changes are applied only through versioned migrations. | 3 | `services/api`: `PlatformTest`. Hibernate runs with `ddl-auto=validate`, so the service does not start if an entity and the migrated tables disagree. |
 
 ## Real-time gateway
 
@@ -51,7 +51,7 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 | R-OPS-02 | An aircraft with no update for a configured time is removed from the live picture. | 6 | |
 | R-OPS-03 | After the message broker or database restarts, every service recovers without a manual restart. | 6 | |
 | R-OPS-04 | Every service exposes health and metrics endpoints, including message lag and the age of the last message per source. | 6 | |
-| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`, for what exists so far: brokers, database, simulator and `ingest`. The services join the stack in their own phases. |
+| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`, for what exists so far: brokers, database, simulator, `ingest` and `api`. The services join the stack in their own phases. |
 
 ## AI tooling
 

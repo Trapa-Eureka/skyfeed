@@ -7,6 +7,8 @@ cd "$(dirname "$0")/.."
 # Read port overrides from .env if there is one (same file Docker Compose reads).
 if [ -f .env ]; then set -a; . ./.env; set +a; fi
 REPLAY_PORT="${REPLAY_PORT:-18090}"
+API_PORT="${API_PORT:-8080}"
+API="http://127.0.0.1:${API_PORT}"
 
 pass() { echo "ok    $1"; }
 fail() { echo "FAIL  $1" >&2; exit 1; }
@@ -55,6 +57,37 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 done
 echo "$dead" | grep -q "reason:does not match telemetry.v1" || fail "an invalid reading did not reach telemetry.dlq.v1 with a reason"
 pass "ingest sends an invalid reading to telemetry.dlq.v1 with the reason"
+
+# Reads JSON on stdin and prints the value of a JavaScript expression over it (the parsed JSON is `d`).
+jq_node() { node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);console.log(eval(process.argv[1]))})' "$1"; }
+
+online=0
+for _ in $(seq 1 30); do
+  online="$(curl -fsS "$API/api/v1/sensors" | jq_node 'd.filter(s => s.sensorId.startsWith("gs-") && s.status === "online" && s.latest).length' || echo 0)"
+  [ "$online" -ge 5 ] && break
+  sleep 1
+done
+[ "$online" -ge 5 ] || fail "expected 5 online sensors from GET /api/v1/sensors within 30 s, got $online"
+pass "api stores telemetry and serves sensors with status ($online online)"
+
+series="$(curl -fsS "$API/api/v1/sensors/gs-iloilo/telemetry?limit=3" | jq_node 'd.length')"
+[ "$series" -eq 3 ] || fail "expected 3 readings from GET /api/v1/sensors/gs-iloilo/telemetry?limit=3, got $series"
+pass "api serves a telemetry series"
+
+icao=""
+for _ in $(seq 1 30); do
+  icao="$(curl -fsS "$API/api/v1/aircraft" | jq_node 'd.length ? d[0].icao24 : ""' || true)"
+  [ -n "$icao" ] && break
+  sleep 1
+done
+[ -n "$icao" ] || fail "GET /api/v1/aircraft returned no current aircraft within 30 s"
+points="$(curl -fsS "$API/api/v1/aircraft/$icao/track" | jq_node 'd.length')"
+[ "$points" -ge 1 ] || fail "GET /api/v1/aircraft/$icao/track returned no positions"
+pass "api stores aircraft states and serves current aircraft and a track ($icao: $points positions)"
+
+paths="$(curl -fsS "$API/v3/api-docs" | jq_node 'Object.keys(d.paths).length')"
+[ "$paths" -eq 4 ] || fail "expected 4 paths in the OpenAPI document, got $paths"
+pass "api serves its OpenAPI document"
 
 docker compose exec -T postgres psql -U skyfeed -d skyfeed -tAc 'select 1' | grep -qx 1 || fail "PostgreSQL does not answer"
 pass "PostgreSQL answers"

@@ -2,8 +2,8 @@
 
 One pipeline for two live feeds: **sensor telemetry** from ground stations (MQTT) and **aircraft positions** (ADS-B), brought together through Kafka by Java microservices and shown on a web console that updates over WebSockets.
 
-> **Status: early development (Phases 0 to 2 done).**
-> Data now flows into Kafka: the `ingest` service forwards simulated sensor telemetry from MQTT and publishes aircraft states from a recorded (or live) ADS-B source, both validated against the message contracts. Nothing stores or shows the data yet: `api` and `gateway` are empty skeletons and there is no web console. Each row in [Features](#features) changes to `Done` only after it has run on a real machine.
+> **Status: early development (Phases 0 to 3 done).**
+> The back half works end to end: simulated sensor telemetry and recorded (or live) aircraft data flow through MQTT and Kafka into PostgreSQL, and a REST API serves sensors, telemetry series, current aircraft and tracks. There is no live push and no web console yet: `gateway` is an empty skeleton. Each row in [Features](#features) changes to `Done` only after it has run on a real machine.
 
 **Jump to:** [Quick start](#quick-start) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Roadmap](#roadmap) · [Requirements](docs/requirements.md) · [Message contracts](contracts/README.md)
 
@@ -43,24 +43,25 @@ flowchart LR
 
 Two frameworks are used on purpose: Quarkus where messages stream through, Spring Boot with Hibernate where data is stored and queried.
 
-The diagram is the target. Today everything up to Kafka exists (simulator, Mosquitto, the replay source, `ingest`, Kafka with its topics) and PostgreSQL is running but empty; `api`, `gateway` and the console are filled in by Phases 3 to 5. Topics, keys and message formats are defined in [contracts/](contracts/README.md).
+The diagram is the target. Today everything except the bottom right exists: the simulator, Mosquitto, the replay source, `ingest`, Kafka, `api` and PostgreSQL. `gateway` and the console are filled in by Phases 4 and 5. Topics, keys and message formats are defined in [contracts/](contracts/README.md).
 
 ## Features
 
 | Feature | Status |
 |---|---|
 | Short `CLAUDE.md`, safety hook, README check hook, `sync-readme` skill | Done (hook tests pass: `node --test .claude/hooks/*.test.mjs`) |
-| Requirements with ids ([docs/requirements.md](docs/requirements.md)) | Done (26 requirements written; 7 covered so far) |
+| Requirements with ids ([docs/requirements.md](docs/requirements.md)) | Done (26 requirements written; 12 covered so far) |
 | One-command local stack: Kafka, Mosquitto, PostgreSQL (Docker Compose) | Done (`pnpm stack:smoke` passes: services healthy, topics exist, MQTT and replay data flow, database answers) |
 | Message contracts (JSON Schema) with valid and invalid examples | Done (checked by the simulator tests) |
 | Sensor simulator: five ground stations publishing over MQTT | Done (every reading valid against the contract; repeatable for a given seed) |
 | ADS-B replay server in the OpenSky format, from a real recording | Done (29 frames recorded from the live API on 2026-11-17; deterministic replay tested) |
-| Service skeletons: `gateway` (Quarkus), `api` (Spring Boot) | Done (each builds and passes one health test with `./mvnw verify`; no features yet) |
+| Service skeleton: `gateway` (Quarkus) | Done (builds and passes one health test with `./mvnw verify`; no features yet) |
 | Local verification in place of hosted CI: `pnpm verify`, also run by a pre-push git hook | Done (`pnpm verify` passes: hooks, typecheck, tests, three service builds, stack smoke test) |
 | `ingest`: MQTT → Kafka bridge with contract validation and a dead-letter topic | Done (tested against real Mosquitto and Kafka in containers; also checked by the stack smoke test) |
 | `ingest`: ADS-B poller → Kafka, replay source by default | Done (same tests; every aircraft in the recording maps to a valid message) |
 | `ingest`: live OpenSky source with a daily credit budget | Done (budget logic unit-tested; run once by hand against the live API: stopped after its 2-credit budget and reported it in the health status) |
-| `api`: idempotent Kafka → PostgreSQL, REST API, OpenAPI document | Planned (Phase 3) |
+| `api`: Kafka → PostgreSQL with idempotent writes, schema by Flyway migrations | Done (tested against real PostgreSQL and Kafka in containers: the same record twice is stored once; a bad record does not block the ones after it) |
+| `api`: REST API for sensors, telemetry series, current aircraft and tracks, with an OpenAPI document | Done (same tests; also checked by the stack smoke test) |
 | `gateway`: WebSocket push with per-client map area and backpressure | Planned (Phase 4) |
 | `web`: live aircraft map, sensor panel, data age and connection state | Planned (Phase 5) |
 | Offline and stale detection, recovery after broker or database restart, metrics | Planned (Phase 6) |
@@ -72,21 +73,21 @@ The diagram is the target. Today everything up to Kafka exists (simulator, Mosqu
 | Area | Choice | Used for |
 |---|---|---|
 | Language (services) | Java 21 | all three services |
-| Frameworks | Quarkus 3.40, Spring Boot 4.1 | `ingest` and `gateway`; `api` |
-| Persistence | Hibernate (JPA), Flyway, PostgreSQL 18 | storage, versioned migrations |
+| Frameworks | Quarkus 3.40, Spring Boot 4.1 (Spring MVC, Spring Data JPA, Spring for Apache Kafka) | `ingest` and `gateway`; `api` |
+| Persistence | Hibernate (JPA) in validate-only mode, Flyway, PostgreSQL 18 | storage, versioned migrations |
 | Messaging | Apache Kafka 4.4 (KRaft, single node), Eclipse Mosquitto 2.1 (MQTT) | event backbone; sensor protocol |
 | Real time | WebSockets | live push to the browser |
-| API | REST, OpenAPI | history and lookups |
+| API | REST, OpenAPI (springdoc), RFC 9457 problem details for errors | history and lookups |
 | Contracts | JSON Schema (draft 2020-12); networknt json-schema-validator in Java, Ajv in TypeScript | one definition per message, shared by all services |
 | Frontend | TypeScript, React, Next.js, MapLibre GL | operator console |
 | Simulator | TypeScript 7 on Node.js 24 (run directly, no build step), MQTT.js | simulated sensors, ADS-B replay server |
 | Testing | JUnit 5, REST Assured, Testcontainers, Quarkus Dev Services, Node test runner; later Vitest, Playwright | unit, contract, integration with real brokers, end to end |
 | Build and run | Maven Wrapper (Maven 3.10), pnpm 10, Docker Compose | builds, local stack |
 | Verification | one local script (`pnpm verify`) and a pre-push git hook; no hosted CI | the gate before code leaves the machine |
-| Observability | health endpoints; later Micrometer | liveness; lag and message age |
+| Observability | health endpoints, Micrometer counters in `api` | liveness, stored / duplicate / invalid record counts; later lag and message age |
 | AI workflow | Claude Code (hooks, skills, subagent review), MCP | development, testing, code review |
 
-In use today: Java 21, Quarkus (reactive messaging for MQTT and Kafka, REST client, scheduler, health), Kafka, Mosquitto, the contracts, the simulator and the test tools listed. Spring Boot is a skeleton and PostgreSQL is running but unused. Hibernate, Flyway, WebSockets, OpenAPI, the frontend stack and MCP arrive with their phases.
+In use today: everything in the table except WebSockets, the frontend stack and MCP, which arrive with their phases.
 
 ## Requirements
 
@@ -111,12 +112,12 @@ The repository is not on GitHub yet; the clone URL is where it will live.
 ## Quick start
 
 ```bash
-pnpm stack:up      # docker compose up -d --build --wait: Kafka, Mosquitto, PostgreSQL, the simulator and ingest
+pnpm stack:up      # docker compose up -d --build --wait: Kafka, Mosquitto, PostgreSQL, the simulator, ingest and api
 pnpm stack:smoke   # the same start, then checks that every part answers
 pnpm stack:down    # stop; data volumes are kept (docker compose down -v also deletes them)
 ```
 
-The first start builds the `ingest` image inside Docker and downloads its dependencies, which takes a few minutes; later starts take seconds.
+The first start builds the `ingest` and `api` images inside Docker and downloads their dependencies, which takes a few minutes; later starts take seconds.
 
 Once it is up:
 
@@ -126,7 +127,8 @@ Once it is up:
 | Aircraft states in the OpenSky format | `http://localhost:18090/api/states/all` |
 | Kafka | `localhost:19092`, topics `telemetry.v1`, `telemetry.dlq.v1`, `adsb.state.v1` |
 | `ingest` health and counters | `http://localhost:8081/q/health/ready` |
-| PostgreSQL | `localhost:15432`, database and user `skyfeed` (no tables until Phase 3) |
+| REST API | `http://localhost:8080/api/v1/…` (see [Usage](#usage)); OpenAPI document at `http://localhost:8080/v3/api-docs` |
+| PostgreSQL | `localhost:15432`, database and user `skyfeed` |
 
 To watch the data:
 
@@ -143,7 +145,24 @@ curl http://localhost:8081/q/health/ready   # forwarded and rejected counts, ADS
 
 ## Usage
 
-The stack produces data and moves it into Kafka; nothing consumes it from there yet.
+**Ask the API.** All endpoints are `GET` and answer JSON; errors are RFC 9457 problem documents.
+
+| Endpoint | Returns |
+|---|---|
+| `/api/v1/sensors` | every sensor with its latest reading, the age of that reading and a status: `online`, `degraded` (no reading for 10 s) or `offline` (30 s) |
+| `/api/v1/sensors/{sensorId}/telemetry?from=&to=&limit=` | the readings of one sensor in a time range, oldest first; the last 15 minutes by default, at most `limit` (default 1000, up to 5000) newest readings |
+| `/api/v1/aircraft` | current aircraft: those heard from in the last 60 s |
+| `/api/v1/aircraft/{icao24}/track?minutes=` | the positions of one aircraft over the last `minutes` (default 30), oldest first |
+
+```bash
+curl http://localhost:8080/api/v1/sensors
+curl 'http://localhost:8080/api/v1/sensors/gs-iloilo/telemetry?limit=5'
+curl http://localhost:8080/api/v1/aircraft
+curl http://localhost:8080/api/v1/aircraft/<icao24>/track        # take an icao24 from the previous answer
+curl 'http://localhost:8080/actuator/metrics/skyfeed.telemetry.records?tag=result:stored'   # also duplicate, invalid; skyfeed.adsb.records
+```
+
+To see the status change, stop the simulator (`docker compose stop simulator`) and ask for the sensors again after 10 and 30 seconds.
 
 **Send a bad reading.** Anything that is not a valid `telemetry.v1` message ends up in the dead-letter topic with the reason in a header:
 
@@ -178,15 +197,16 @@ Copy `.env.example` to `.env` to change a setting. All are optional.
 | `SIM_SEED` | `skyfeed` | seed for the noise in the readings |
 | `REPLAY_SPEED` | `1` | `2` plays the recording twice as fast |
 | `INGEST_PORT` | `8081` | `ingest` HTTP port on the host (health) |
+| `API_PORT` | `8080` | `api` HTTP port on the host |
 | `ADSB_SOURCE` | `replay` | `replay` reads the recording; `opensky` reads the live API |
 | `ADSB_POLL_INTERVAL` | `10s` | time between requests to the ADS-B source |
 | `OPENSKY_DAILY_CREDIT_BUDGET` | `300` | credits `ingest` may spend per UTC day in `opensky` mode |
 
-The map area is set in `services/ingest/src/main/resources/application.properties` (`skyfeed.adsb.area.*`); the cost of a live request follows from its size.
+The map area is set in `services/ingest/src/main/resources/application.properties` (`skyfeed.adsb.area.*`); the cost of a live request follows from its size. The sensor status thresholds and the window for current aircraft are in `services/api/src/main/resources/application.properties` (`skyfeed.sensor.*`, `skyfeed.aircraft.*`).
 
 The ports are deliberately not the usual 9092, 1883 and 5432, so the stack does not collide with brokers or databases already running on the machine. All ports are published on `127.0.0.1` only.
 
-Still planned: OpenSky credentials (only anonymous access works today), and stale and offline timeouts.
+Still planned: OpenSky credentials (only anonymous access works today).
 
 ### Develop this repository
 
@@ -201,9 +221,11 @@ cd services/ingest && ./mvnw verify     # likewise services/api and services/gat
 
 There is no hosted CI. `pnpm verify` runs every check on the developer machine, and after `pnpm hooks:install` git runs it before each push and refuses the push if a check fails. `SKYFEED_VERIFY_FAST=1 git push` skips the stack smoke test; `git push --no-verify` skips the hook.
 
-Docker must be running for both `verify` commands: the `ingest` tests start a Mosquitto and a Kafka container of their own.
+Docker must be running for both `verify` commands: the `ingest` and `api` tests start Mosquitto, Kafka and PostgreSQL containers of their own.
 
-To work on `ingest` with live reload, start the stack, stop its copy of the service and run it from source: `docker compose stop ingest`, then `./mvnw quarkus:dev` in `services/ingest` (it uses the stack's brokers on their host ports). The skeletons listen on 8080 (`api`, `./mvnw spring-boot:run`) and 8082 (`gateway`, `./mvnw quarkus:dev`) and are not part of the Compose stack yet.
+To work on a service from source, start the stack, stop its copy of that service and run it yourself; it uses the stack's brokers and database on their host ports. For `ingest`: `docker compose stop ingest`, then `./mvnw quarkus:dev` in `services/ingest` (live reload). For `api`: `docker compose stop api`, then `./mvnw spring-boot:run` in `services/api`. The `gateway` skeleton listens on 8082 (`./mvnw quarkus:dev`) and is not part of the Compose stack yet.
+
+A change to the database goes into a new file in `services/api/src/main/resources/db/migration` (`V2__….sql`, and so on); an applied migration is never edited.
 
 ## Data sources
 
@@ -216,11 +238,11 @@ SkyFeed is a demo. It must not be used for navigation or any operational purpose
 
 ```
 skyfeed/
-├── compose.yaml          # the local stack: Kafka, topic creation, Mosquitto, PostgreSQL, simulator, ingest
+├── compose.yaml          # the local stack: Kafka, topic creation, Mosquitto, PostgreSQL, simulator, ingest, api
 ├── contracts/            # JSON Schemas for the messages, topic table, valid and invalid examples
 ├── services/
 │   ├── ingest/           # Quarkus: MQTT → Kafka bridge with dead-letter topic, ADS-B poller → Kafka
-│   ├── api/              # Spring Boot skeleton (Phase 3: Kafka → PostgreSQL, REST)
+│   ├── api/              # Spring Boot + Hibernate: Kafka → PostgreSQL (idempotent), Flyway migrations, REST API, OpenAPI
 │   └── gateway/          # Quarkus skeleton (Phase 4: Kafka → WebSocket)
 ├── tools/
 │   └── simulator/        # sensor simulator (MQTT), OpenSky replay server, recorder, the recorded fixture
@@ -249,7 +271,7 @@ Planned: `apps/web` (the operator console, Phase 5) and `tools/mcp` (the read-on
 - [x] **Phase 0 — Guard rails and intent.** Short `CLAUDE.md`, hooks, the `sync-readme` skill, requirements with ids, this README.
 - [x] **Phase 1 — Local platform and contracts.** Docker Compose with Kafka, Mosquitto and PostgreSQL; topic names and JSON Schemas; a recorded ADS-B replay file and a sensor simulator so every later test is local and repeatable; service skeletons with the Maven Wrapper; one local verification script in place of hosted CI.
 - [x] **Phase 2 — Ingest (Quarkus).** MQTT → Kafka bridge with validation and a dead-letter topic; ADS-B poller with replay and live modes and a credit budget.
-- [ ] **Phase 3 — Storage and REST API (Spring Boot, Hibernate).** Idempotent consumers, Flyway migrations, REST endpoints, OpenAPI, integration tests on real PostgreSQL and Kafka.
+- [x] **Phase 3 — Storage and REST API (Spring Boot, Hibernate).** Idempotent consumers, Flyway migrations, REST endpoints, OpenAPI, integration tests on real PostgreSQL and Kafka.
 - [ ] **Phase 4 — Real-time gateway (Quarkus WebSockets).** Subscription by map area, backpressure for slow clients, heartbeat.
 - [ ] **Phase 5 — Operator console (Next.js, MapLibre GL).** Live map, sensor panel, data age, connection state, end-to-end tests against replay data.
 - [ ] **Phase 6 — Reliability and observability.** Offline and stale detection, recovery after a broker or database restart, metrics, failure drills written up.
@@ -268,8 +290,11 @@ The project is built with an AI coding agent (Claude Code), set up so that the a
 
 ## Known limitations
 
-- Data stops at Kafka; see **Status**. Nothing stores it or shows it until Phases 3 to 5.
-- Delivery from MQTT to Kafka is at least once, so a reading can appear twice in `telemetry.v1`; consumers must cope with that (the `api` service will, Phase 3). If Kafka stays unreachable longer than the producer keeps retrying, the readings of that period are lost: they are logged and counted (`failed` in the health output) but not kept for later. Recovery behaviour is the subject of Phase 6.
+- There is no live push and no console yet; see **Status**. The data can be read only through the REST API.
+- Delivery from MQTT to Kafka is at least once, so a reading can appear twice in `telemetry.v1`; consumers must cope with that (`api` does: it stores such a reading once). If Kafka stays unreachable longer than the producer keeps retrying, the readings of that period are lost: they are logged and counted (`failed` in the health output) but not kept for later. Recovery behaviour is the subject of Phase 6.
+- Nothing is ever deleted from the database. At the default rates the telemetry table grows by about 216,000 rows a day; there is no retention job yet.
+- The sensor status is worked out from the age of the latest reading when the API is asked. Nothing announces that a sensor went offline (that is Phase 6), and a sensor whose clock is wrong would get the wrong status.
+- The REST API has no authentication and no paging. It is published on `127.0.0.1` only.
 - The live OpenSky source works with anonymous access only; signing in with an OpenSky account is not implemented. Its credit count is kept in memory and starts from zero when `ingest` restarts, so restarting often can spend more than the budget. OpenSky's own limit still applies.
 - No automated test calls the live API. The live source was run by hand once (see [Features](#features)).
 - There is no hosted CI. Checks run only on a developer machine (so far one: macOS, Apple silicon), and the pre-push hook protects only clones where `pnpm hooks:install` was run.
