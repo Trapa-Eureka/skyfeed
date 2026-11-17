@@ -2,7 +2,7 @@
 
 What happens when a part of SkyFeed goes away and comes back. Each drill is a step of [`scripts/drill.sh`](../scripts/drill.sh) (`pnpm drill`), which runs against the whole local stack, takes the part away for 20 seconds with `docker compose stop`, starts it again, and then checks two things: data flows end to end again, and no service container was restarted to get there (R-OPS-03).
 
-"Flows end to end" means all five sensors are `online` in the REST API with fresh readings (MQTT → `ingest` → Kafka → `api` → PostgreSQL), the API lists an aircraft heard from in the last 30 seconds, and a WebSocket client receives every kind of message from the gateway.
+"Flows end to end" means all five sensors are `online` in the REST API with fresh readings (MQTT → `ingest` → Kafka → `api` → PostgreSQL), the API lists an aircraft heard from in the last 30 seconds, the MCP server can list the topics, and a WebSocket client receives every kind of message from the gateway. (The MCP check was added after the two runs recorded below; a third run with it, the same day, passed with recovery times inside the same range: 12, 10 and 6 seconds.)
 
 The numbers below are from two runs on 2026-11-17 on a developer machine (macOS, Docker Desktop with 3 GB of memory). They are what was observed, not guarantees; the two runs differed, most of all for Kafka, so both are given.
 

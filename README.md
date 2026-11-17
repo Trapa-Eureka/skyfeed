@@ -2,8 +2,8 @@
 
 One pipeline for two live feeds: **sensor telemetry** from ground stations (MQTT) and **aircraft positions** (ADS-B), brought together through Kafka by Java microservices and shown on a web console that updates over WebSockets.
 
-> **Status: works end to end, and comes back after failures (Phases 0 to 6 done).**
-> One command starts everything: simulated sensors and recorded (or live) aircraft data flow through MQTT and Kafka into PostgreSQL, a REST API serves the stored data, a WebSocket gateway pushes live updates, and a web console shows the aircraft on a map beside the state of the sensors. Stopping and restarting Kafka, PostgreSQL or the MQTT broker is survived without touching a service ([failure drills](docs/drills.md)). Still to come: AI tooling (Phase 7) and an optional cloud deployment (Phase 8). Each row in [Features](#features) is `Done` only after it has run on a real machine.
+> **Status: complete for local use (Phases 0 to 7 done).**
+> One command starts everything: simulated sensors and recorded (or live) aircraft data flow through MQTT and Kafka into PostgreSQL, a REST API serves the stored data, a WebSocket gateway pushes live updates, and a web console shows the aircraft on a map beside the state of the sensors. Stopping and restarting Kafka, PostgreSQL or the MQTT broker is survived without touching a service ([failure drills](docs/drills.md)). An MCP server gives AI agents a read-only view of the topics. All 26 requirements are named by a test. What is left is optional: a cloud deployment (Phase 8). Each row in [Features](#features) is `Done` only after it has run on a real machine.
 
 **Jump to:** [Quick start](#quick-start) · [Architecture](#architecture) · [Tech stack](#tech-stack) · [Roadmap](#roadmap) · [Requirements](docs/requirements.md) · [Message contracts](contracts/README.md) · [Failure drills](docs/drills.md)
 
@@ -60,7 +60,7 @@ Everything in the diagram exists. The console reads the stored state through the
 | Feature | Status |
 |---|---|
 | Short `CLAUDE.md`, safety hook, README check hook, `sync-readme` skill | Done (hook tests pass: `node --test .claude/hooks/*.test.mjs`) |
-| Requirements with ids ([docs/requirements.md](docs/requirements.md)) | Done (26 requirements written; 24 covered, the 2 left are Phase 7) |
+| Requirements with ids ([docs/requirements.md](docs/requirements.md)) | Done (26 requirements, each named by at least one test; `pnpm trace` checks it) |
 | One-command local stack: Kafka, Mosquitto, PostgreSQL (Docker Compose) | Done (`pnpm stack:smoke` passes: services healthy, topics exist, MQTT and replay data flow, database answers) |
 | Message contracts (JSON Schema) with valid and invalid examples | Done (checked by the simulator tests) |
 | Sensor simulator: five ground stations publishing over MQTT | Done (every reading valid against the contract; repeatable for a given seed) |
@@ -79,7 +79,9 @@ Everything in the diagram exists. The console reads the stored state through the
 | Sensor offline detection: status changes stored and published as events through a transactional outbox, pushed to the console | Done (tested against real PostgreSQL and Kafka; end-to-end test with the simulator stopped; failure drill) |
 | Recovery after Kafka, PostgreSQL or MQTT broker restarts, with no service restarted | Done (`pnpm drill`: each is stopped for 20 s; data flowed again 3 to 30 s after the part was back, over two runs; results in [docs/drills.md](docs/drills.md)) |
 | Metrics on every service: age of the last message per source or topic, Kafka consumer lag, counters | Done (asserted in each service's tests and in the smoke test; nothing collects them yet) |
-| Read-only MCP server over the topics; requirement-to-test check | Planned (Phase 7) |
+| Read-only MCP server over the Kafka topics: list topics, recent messages, consumer lag | Done (tested over HTTP against a real Kafka: the tools answer, and calling them changes nothing; checked by the smoke test) |
+| Requirement-to-test check (`pnpm trace`) | Done (unit-tested; run on this repository: 26 of 26 requirements named by a test) |
+| Local AI review of a change: a `safety-reviewer` subagent and a `review-changes` skill for Claude Code | Done (run once, on the change that added it: 12 findings, checked against the code; the ones that held were fixed before the commit, among them an MCP tool that could return part of a topic as if it were all of it) |
 | Cloud deployment and recorded demo | Planned (Phase 8, optional) |
 
 ## Tech stack
@@ -99,13 +101,13 @@ Everything in the diagram exists. The console reads the stored state through the
 | Build and run | Maven Wrapper (Maven 3.10), pnpm 10, Docker Compose | builds, local stack |
 | Verification | one local script (`pnpm verify`) and a pre-push git hook; no hosted CI | the gate before code leaves the machine |
 | Observability | health endpoints and Micrometer metrics in Prometheus format on all three services | liveness, age of the last message per source and topic, Kafka consumer lag, counters |
-| AI workflow | Claude Code (hooks, skills, subagent review), MCP | development, testing, code review |
+| AI workflow | Claude Code (hooks, skills, a review subagent); MCP server built with Spring AI 2.0 | development, testing, code review; read-only access to the topics for agents |
 
-In use today: everything in the table except MCP (Phase 7).
+Everything in the table is in use.
 
 ## Requirements
 
-- Docker with Docker Compose (the local stack). The stack uses about 1.3 GB of Docker's memory; the tests need about as much again for their own containers, though not at the same time.
+- Docker with Docker Compose (the local stack). The stack uses about 1.5 GB of Docker's memory; the tests need about as much again for their own containers, though not at the same time.
 - Node.js 24 or newer and [pnpm](https://pnpm.io) 10 (tests, development hooks, running the console or simulator from source)
 - A browser. The console's background map comes from [OpenFreeMap](https://openfreemap.org) and needs internet access; without it, or with `MAP_STYLE_URL=none`, the console shows aircraft and sensors on a plain grid.
 - JDK 21 (the services; Maven comes with the wrapper in each service folder)
@@ -127,7 +129,7 @@ The repository is not on GitHub yet; the clone URL is where it will live.
 ## Quick start
 
 ```bash
-pnpm stack:up      # docker compose up -d --build --wait: Kafka, Mosquitto, PostgreSQL, the simulator, the three services and the console
+pnpm stack:up      # docker compose up -d --build --wait: Kafka, Mosquitto, PostgreSQL, the simulator, the three services, the console and the MCP server
 pnpm stack:smoke   # the same start, then checks that every part answers
 pnpm stack:down    # stop; data volumes are kept (docker compose down -v also deletes them)
 ```
@@ -147,6 +149,7 @@ Once it is up:
 | `ingest` health and counters | `http://localhost:8081/q/health/ready` |
 | REST API | `http://localhost:8080/api/v1/…` (see [Usage](#usage)); OpenAPI document at `http://localhost:8080/v3/api-docs` |
 | Live feed (WebSocket) | `ws://localhost:8082/ws/v1` (see [Usage](#usage)); health and counters at `http://localhost:8082/q/health/ready` |
+| MCP server for AI agents | `http://localhost:8083/mcp` (see [tools/mcp/README.md](tools/mcp/README.md)) |
 | PostgreSQL | `localhost:15432`, database and user `skyfeed` |
 
 To watch the data:
@@ -176,6 +179,12 @@ To see the failure behaviour, run `docker compose stop gateway`, watch for half 
 **Run the failure drills.** With the stack up, `pnpm drill` stops Kafka, PostgreSQL and the MQTT broker for 20 seconds each, silences the sensors, and checks after each that everything recovers by itself. It takes three to four minutes; what it showed is in [docs/drills.md](docs/drills.md).
 
 **Read the metrics.** Prometheus text format: `http://localhost:8081/q/metrics` (`ingest`), `http://localhost:8080/actuator/prometheus` (`api`), `http://localhost:8082/q/metrics` (`gateway`). The ones to look at first are listed in [docs/drills.md](docs/drills.md#what-an-operator-would-look-at).
+
+**Let an AI agent look at the topics.** With the stack up, an MCP client connected to `http://localhost:8083/mcp` gets three read-only tools: `list_topics`, `recent_messages` and `consumer_lag`. Claude Code picks the server up from [`.mcp.json`](.mcp.json) when started in this folder (it asks once whether to trust it); then a question such as "which messages are in the dead-letter topic, and why were they rejected?" is answered from the live topics. Details and a `curl` example: [tools/mcp/README.md](tools/mcp/README.md).
+
+**Check that every requirement has a test.** `pnpm trace` lists each requirement in [docs/requirements.md](docs/requirements.md) with the tests that name it, and fails if one has none.
+
+**Have a change reviewed.** In Claude Code, ask to "review my changes" (or a branch, or a pull request number). The `review-changes` skill runs the trace check and hands the diff to the `safety-reviewer` subagent, which reads it against a checklist written for this project: stale data shown as current, silent loss, duplicates, contract and migration rules, missing timeouts, untested requirements, secrets, and claims in the documentation. It runs on your own Claude Code and reports to you. It is instructed to change and post nothing; that is an instruction, not a technical barrier, although the safety hook applies to it as to any session. No GitHub Actions and no API key are involved.
 
 The rest of this section uses the same data without the console.
 
@@ -249,6 +258,7 @@ Copy `.env.example` to `.env` to change a setting. All are optional.
 | `API_PORT` | `8080` | `api` HTTP port on the host |
 | `GATEWAY_PORT` | `8082` | `gateway` HTTP and WebSocket port on the host |
 | `WEB_PORT` | `3000` | console port on the host |
+| `MCP_PORT` | `8083` | MCP server port on the host |
 | `MAP_STYLE_URL` | OpenFreeMap dark style | background map of the console: a MapLibre style URL, or `none` for a plain grid |
 | `ADSB_SOURCE` | `replay` | `replay` reads the recording; `opensky` reads the live API |
 | `ADSB_POLL_INTERVAL` | `10s` | time between requests to the ADS-B source |
@@ -266,11 +276,12 @@ Still planned: OpenSky credentials (only anonymous access works today).
 pnpm verify               # everything below, plus the stack smoke test, the console end-to-end tests and the failure drills
 pnpm verify:fast          # the same without the smoke test, the end-to-end tests and the drills
 pnpm drill                # the failure drills alone; the stack must be running
+pnpm trace                # every requirement must be named by a test
 pnpm test                 # simulator, contract and console unit tests
 pnpm e2e                  # console end-to-end tests in a real browser; the stack must be running
 pnpm typecheck
 pnpm test:hooks           # tests for the two development hooks
-cd services/ingest && ./mvnw verify     # likewise services/api and services/gateway
+cd services/ingest && ./mvnw verify     # likewise services/api, services/gateway and tools/mcp
 ```
 
 There is no hosted CI. `pnpm verify` runs every check on the developer machine, and after `pnpm hooks:install` git runs it before each push and refuses the push if a check fails. `SKYFEED_VERIFY_FAST=1 git push` skips the stack smoke test, the end-to-end tests and the drills; `git push --no-verify` skips the hook.
@@ -303,12 +314,14 @@ skyfeed/
 ├── apps/
 │   └── web/              # Next.js operator console: map, sensor panel, charts; unit tests and Playwright end-to-end tests
 ├── tools/
-│   └── simulator/        # sensor simulator (MQTT), OpenSky replay server, recorder, the recorded fixture
+│   ├── simulator/        # sensor simulator (MQTT), OpenSky replay server, recorder, the recorded fixture
+│   └── mcp/              # read-only MCP server over the Kafka topics (Spring Boot, Spring AI)
 ├── infra/
 │   └── mosquitto/        # broker configuration
 ├── scripts/
 │   ├── smoke.sh          # starts the stack and checks every part
 │   ├── drill.sh          # failure drills: stops and restarts Kafka, PostgreSQL, the MQTT broker and the sensors
+│   ├── trace.mjs         # requirement-to-test check, with its own tests
 │   ├── ws-check.mjs      # a WebSocket client that checks the live feed (used by smoke.sh)
 │   └── verify.sh         # every check in one run; the local replacement for CI
 ├── .githooks/
@@ -320,13 +333,15 @@ skyfeed/
 ├── .claude/
 │   ├── settings.json     # registers the hooks
 │   ├── hooks/            # block-dangerous (before a tool runs), readme-check (when a turn ends), and their tests
+│   ├── agents/
+│   │   └── safety-reviewer.md   # a read-only reviewer with this project's checklist
 │   └── skills/
-│       └── sync-readme/  # the procedure for keeping this README accurate
+│       ├── sync-readme/      # the procedure for keeping this README accurate
+│       └── review-changes/   # how to review a change: trace check, then the safety-reviewer
+├── .mcp.json             # registers the MCP server for Claude Code
 ├── CLAUDE.md             # a few lines of guidance for AI agents working here
 └── README.md
 ```
-
-Planned: `tools/mcp` (the read-only MCP server, Phase 7).
 
 ## Roadmap
 
@@ -337,7 +352,7 @@ Planned: `tools/mcp` (the read-only MCP server, Phase 7).
 - [x] **Phase 4 — Real-time gateway (Quarkus WebSockets).** Subscription by map area, backpressure for slow clients, heartbeat.
 - [x] **Phase 5 — Operator console (Next.js, MapLibre GL).** Live map, sensor panel, data age, connection state, end-to-end tests against replay data.
 - [x] **Phase 6 — Reliability and observability.** Offline and stale detection, recovery after a broker or database restart, metrics, failure drills written up.
-- [ ] **Phase 7 — AI tooling.** Read-only MCP server over the topics; a check that lists requirements no test covers; AI review on pull requests.
+- [x] **Phase 7 — AI tooling.** Read-only MCP server over the topics; a check that lists requirements no test covers; AI review of a change, run locally instead of on pull requests in hosted CI.
 - [ ] **Phase 8 — Cloud and demo (optional).** Container images, deployment to one cloud provider, a recorded demo. A headless CMS (Strapi) for sensor site details and operator notices is a possible addition here.
 
 ## How it is developed
@@ -347,7 +362,9 @@ The project is built with an AI coding agent (Claude Code), set up so that the a
 - **Intent first.** A requirement is written in [docs/requirements.md](docs/requirements.md) before the code, and the test names the requirement it covers.
 - **Fast local feedback.** Tests run against the local stack and recorded replay data, never the live API. That goes up to a real browser driving the console while a service is stopped and started under it.
 - **Rules are enforced, not requested.** Things that must never happen (leaking a key, a destructive command) are blocked by a hook before they run. `CLAUDE.md` holds only the few lines that apply to every task.
-- **Procedures are skills.** Longer how-tos, such as keeping this README accurate, live in `.claude/skills/` and are loaded only when needed.
+- **Procedures are skills.** Longer how-tos, such as keeping this README accurate or reviewing a change, live in `.claude/skills/` and are loaded only when needed.
+- **A second reader that did not write the code.** A change is reviewed by a subagent that gets the diff and a checklist, not the author's reasoning, and its findings are checked against the code before they are believed.
+- **Requirements are traced by a program.** `pnpm trace` fails the build when a requirement has no test that names it.
 - **This README is kept current by a hook.** When product files change and the README does not, the agent is sent back once to update it, or to state that no update is needed.
 
 ## Known limitations
@@ -365,6 +382,9 @@ The project is built with an AI coding agent (Claude Code), set up so that the a
 - The sensor status follows from the age of the latest reading, by the sensor's own timestamps, so a sensor whose clock is wrong would get the wrong status. A change is noticed at the next check (every 2 seconds), so its event can be that much late.
 - Readings a sensor takes while the MQTT broker is away are lost; the simulated sensors do not buffer. See [docs/drills.md](docs/drills.md) for this and for what the drills leave out (long outages, crashes, lost volumes, more than one instance of a service).
 - The metrics are only offered. No Prometheus, dashboard or alert is part of the stack.
+- The MCP server has no authentication and shows message contents to whoever can reach it; it listens on `127.0.0.1` only and refuses other host names and foreign web origins. Those contents come from outside sources; an agent must treat them as data. It covers Kafka only, not MQTT.
+- `pnpm trace` proves that each requirement is named by a test or a scripted check, not that the check is a good one. For R-OPS-03 and R-OPS-05 the naming is a comment in a shell script (`drill.sh`, `smoke.sh`), which `verify:fast` does not run.
+- The AI review depends on a model's judgement. It is a second look, not a gate: nothing in `pnpm verify` or the push hook waits for it.
 - The REST API and the console have no authentication, and the API has no paging. Everything is published on `127.0.0.1` only.
 - The live OpenSky source works with anonymous access only; signing in with an OpenSky account is not implemented. Its credit count is kept in memory and starts from zero when `ingest` restarts, so restarting often can spend more than the budget. OpenSky's own limit still applies.
 - No automated test calls the live API. The live source was run by hand once (see [Features](#features)).

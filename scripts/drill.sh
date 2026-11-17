@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Failure drills (R-OPS-03, R-OPS-01): takes one part of the running stack away at a time, brings it back, and
-# checks that data flows end to end again without any service being restarted by hand.
+# Failure drills: takes one part of the running stack away at a time, brings it back, and checks that data flows
+# end to end again without any service being restarted by hand. Each drill names the requirement it is evidence for.
 # Usage: bash scripts/drill.sh            The stack must be running (pnpm stack:up). It is left running.
 # What each drill showed when it was last run is written up in docs/drills.md.
 set -euo pipefail
@@ -9,9 +9,10 @@ cd "$(dirname "$0")/.."
 if [ -f .env ]; then set -a; . ./.env; set +a; fi
 API="http://127.0.0.1:${API_PORT:-8080}"
 WS="ws://127.0.0.1:${GATEWAY_PORT:-8082}/ws/v1"
+MCP="http://127.0.0.1:${MCP_PORT:-8083}"
 OUTAGE_SECONDS="${DRILL_OUTAGE_SECONDS:-20}"
 RECOVERY_LIMIT_SECONDS="${DRILL_RECOVERY_LIMIT_SECONDS:-120}"
-SERVICES="ingest api gateway web"
+SERVICES="ingest api gateway web mcp"
 
 pass() { echo "ok    $1"; }
 fail() { echo "FAIL  $1" >&2; exit 1; }
@@ -34,13 +35,19 @@ wait_healthy() { # service
 }
 
 # Data flows end to end when fresh readings of all five sensors are in the database (MQTT -> ingest -> Kafka ->
-# api -> PostgreSQL), the API lists a recently heard aircraft, and the live feed delivers every kind of message.
+# api -> PostgreSQL), the API lists a recently heard aircraft, the MCP server can list the topics, and the live
+# feed delivers every kind of message.
 flow_ok() {
-  local online fresh
+  local online fresh topics
   online="$(curl -fsS --max-time 5 "$API/api/v1/sensors" 2> /dev/null | jq_node 'd.filter(s => s.sensorId.startsWith("gs-") && s.status === "online").length')"
   [ "${online:-0}" -ge 5 ] || return 1
   fresh="$(curl -fsS --max-time 5 "$API/api/v1/aircraft" 2> /dev/null | jq_node 'd.filter(a => a.ageSeconds < 30).length')"
   [ "${fresh:-0}" -ge 1 ] || return 1
+  # The MCP server keeps one long-lived connection to Kafka; it too must answer again by itself.
+  topics="$(curl -fsS --max-time 15 -X POST "$MCP/mcp" -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_topics","arguments":{}}}' 2> /dev/null \
+    | jq_node 'd.result.isError ? 0 : JSON.parse(d.result.content[0].text).topics.length')"
+  [ "${topics:-0}" -ge 4 ] || return 1
   node scripts/ws-check.mjs "$WS" > /dev/null 2>&1
 }
 
@@ -82,18 +89,22 @@ docker compose ps -q kafka > /dev/null 2>&1 || fail "the stack is not running; s
 wait_flow > /dev/null || fail "data does not flow before any drill; fix that first"
 pass "baseline: data flows end to end"
 
+# R-OPS-03
 echo "Drill 1: Kafka goes away for $OUTAGE_SECONDS s"
 outage_drill kafka "Kafka restart"
 
+# R-OPS-03
 echo "Drill 2: PostgreSQL goes away for $OUTAGE_SECONDS s"
 outage_drill postgres "PostgreSQL restart"
 # Nothing may be lost here: Kafka keeps the records and the api service retries until the database is back.
 [ "$LAST_STORED" -ge $((LAST_EXPECTED - 2)) ] || fail "PostgreSQL restart: readings were lost ($LAST_STORED stored of about $LAST_EXPECTED)"
 pass "PostgreSQL restart: no reading was lost"
 
+# R-OPS-03
 echo "Drill 3: the MQTT broker goes away for $OUTAGE_SECONDS s"
 outage_drill mosquitto "MQTT broker restart"
 
+# R-OPS-01
 echo "Drill 4: all sensors go silent"
 since="$(now_iso)"
 docker compose stop simulator > /dev/null 2>&1

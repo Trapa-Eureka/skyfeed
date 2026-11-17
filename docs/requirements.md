@@ -2,6 +2,8 @@
 
 Each requirement has an id. A requirement is written here before the code, and the test that covers it names the id (in its display name or a tag). The **Covered by** column is filled in when that test exists and passes; an empty cell means not covered yet.
 
+`pnpm trace` checks the link mechanically: it fails when a requirement is named by no test, or a test names an id that is not in this file. It cannot tell whether a test that names a requirement really proves it; the **Covered by** column is the human answer to that.
+
 Phases refer to the [Roadmap](../README.md#roadmap).
 
 ## Ingest
@@ -57,5 +59,5 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 
 | Id | Requirement | Phase | Covered by |
 |---|---|---|---|
-| R-AI-01 | An MCP server exposes read-only tools over the message topics (list topics, recent messages, consumer lag). It has no tool that writes. | 7 | |
-| R-AI-02 | A check reports every requirement in this file that no test names. | 7 | |
+| R-AI-01 | An MCP server exposes read-only tools over the message topics (list topics, recent messages, consumer lag). It has no tool that writes. | 7 | `tools/mcp`: `TopicToolsTest` (over HTTP against a real Kafka: the tool list, each tool's answer, and that calling them leaves records, committed positions, topics and groups unchanged; plus a scan of the source for any writing call); `scripts/smoke.sh` |
+| R-AI-02 | A check reports every requirement in this file that no test names. | 7 | `scripts/trace.test.mjs`; the check itself is `scripts/trace.mjs` (`pnpm trace`), run by `scripts/verify.sh`. It also reports a test that names a requirement which does not exist. |

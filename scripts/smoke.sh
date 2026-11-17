@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Smoke test for the local stack (R-OPS-05): starts it with one command, then checks that every part answers.
+# Smoke test for the local stack: starts it with one command (R-OPS-05), then checks that every part answers.
+# Each check names the requirement it gives evidence for.
 # Usage: bash scripts/smoke.sh          The stack is left running; stop it with `docker compose down`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -39,16 +40,19 @@ consume() { # topic, how many records to wait for
     --topic "$1" --from-beginning --max-messages "$2" --timeout-ms 30000 --formatter-property print.key=true 2> /dev/null || true
 }
 
+# R-ING-01
 records="$(consume telemetry.v1 5)"
 [ "$(echo "$records" | grep -c '"sensorId"' || true)" -eq 5 ] || fail "expected 5 records on Kafka topic telemetry.v1 within 30 s"
 echo "$records" | head -1 | grep -qE '^gs-[a-z]+[[:space:]]' || fail "telemetry.v1 records are not keyed by sensor id"
 pass "ingest forwards MQTT telemetry to Kafka topic telemetry.v1, keyed by sensor id"
 
+# R-ING-03
 records="$(consume adsb.state.v1 5)"
 [ "$(echo "$records" | grep -c '"icao24"' || true)" -eq 5 ] || fail "expected 5 records on Kafka topic adsb.state.v1 within 30 s"
 echo "$records" | head -1 | grep -qE '^[0-9a-f]{6}[[:space:]]' || fail "adsb.state.v1 records are not keyed by ICAO address"
 pass "ingest publishes aircraft states to Kafka topic adsb.state.v1, keyed by ICAO address"
 
+# R-ING-02
 marker="smoke-$(date +%s)-$$"
 docker compose exec -T mosquitto mosquitto_pub -h localhost -q 1 -t sensors/gs-smoke/telemetry -m "{\"sensorId\":\"gs-smoke\",\"note\":\"$marker\"}"
 dead=""
@@ -63,6 +67,7 @@ pass "ingest sends an invalid reading to telemetry.dlq.v1 with the reason"
 # Reads JSON on stdin and prints the value of a JavaScript expression over it (the parsed JSON is `d`).
 jq_node() { node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);console.log(eval(process.argv[1]))})' "$1"; }
 
+# R-API-01 R-API-03
 online=0
 for _ in $(seq 1 30); do
   online="$(curl -fsS "$API/api/v1/sensors" | jq_node 'd.filter(s => s.sensorId.startsWith("gs-") && s.status === "online" && s.latest).length' || echo 0)"
@@ -87,10 +92,12 @@ points="$(curl -fsS "$API/api/v1/aircraft/$icao/track" | jq_node 'd.length')"
 [ "$points" -ge 1 ] || fail "GET /api/v1/aircraft/$icao/track returned no positions"
 pass "api stores aircraft states and serves current aircraft and a track ($icao: $points positions)"
 
+# R-API-04
 paths="$(curl -fsS "$API/v3/api-docs" | jq_node 'Object.keys(d.paths).length')"
 [ "$paths" -eq 5 ] || fail "expected 5 paths in the OpenAPI document, got $paths"
 pass "api serves its OpenAPI document"
 
+# R-RT-01 R-RT-02 R-RT-04
 live="$(node scripts/ws-check.mjs "ws://127.0.0.1:${GATEWAY_PORT}/ws/v1")" || fail "live feed: $live"
 pass "gateway pushes hello, heartbeat, aircraft in the subscribed area and telemetry over WebSocket ($live)"
 
@@ -101,6 +108,7 @@ metric() { # url, text the metrics must contain. A Kafka consumer reports its la
   done
   fail "$1 does not offer the metric $2"
 }
+# R-OPS-04
 metric "http://127.0.0.1:${INGEST_PORT:-8081}/q/metrics" 'skyfeed_source_last_message_age_seconds{source="mqtt"}'
 metric "http://127.0.0.1:${INGEST_PORT:-8081}/q/metrics" 'skyfeed_source_last_message_age_seconds{source="adsb"}'
 metric "$API/actuator/prometheus" 'skyfeed_kafka_last_record_age_seconds{topic="telemetry.v1"}'
@@ -114,6 +122,19 @@ curl -fsS "http://127.0.0.1:${WEB_PORT}/" | grep -q "SkyFeed" || fail "the conso
 sensors_via_web="$(curl -fsS "http://127.0.0.1:${WEB_PORT}/api/v1/sensors" | jq_node 'd.length')"
 [ "$sensors_via_web" -ge 5 ] || fail "the console's /api/v1 proxy returned $sensors_via_web sensors"
 pass "web console loads and reaches the api service through its own /api/v1 path"
+
+mcp() { # JSON-RPC method, params
+  curl -fsS -X POST "http://127.0.0.1:${MCP_PORT:-8083}/mcp" -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$1\",\"params\":$2}"
+}
+# R-AI-01
+tools="$(mcp tools/list '{}' | jq_node 'd.result.tools.map(t => t.name + ":" + t.annotations.readOnlyHint).sort().join(" ")')"
+[ "$tools" = "consumer_lag:true list_topics:true recent_messages:true" ] || fail "MCP server: expected three read-only tools, got: $tools"
+dead_letters="$(mcp tools/call '{"name":"recent_messages","arguments":{"topic":"telemetry.dlq.v1","limit":5}}' | jq_node 'JSON.parse(d.result.content[0].text).messages.filter(m => m.headers.reason).length')"
+[ "${dead_letters:-0}" -ge 1 ] || fail "MCP server: recent_messages did not return the dead-lettered reading with its reason"
+api_lag="$(mcp tools/call '{"name":"consumer_lag","arguments":{}}' | jq_node 'JSON.parse(d.result.content[0].text).groups.filter(g => g.group === "skyfeed-api").length')"
+[ "$api_lag" = "1" ] || fail "MCP server: consumer_lag does not report the group skyfeed-api"
+pass "MCP server offers three read-only tools; recent_messages and consumer_lag answer from the live topics"
 
 docker compose exec -T postgres psql -U skyfeed -d skyfeed -tAc 'select 1' | grep -qx 1 || fail "PostgreSQL does not answer"
 pass "PostgreSQL answers"

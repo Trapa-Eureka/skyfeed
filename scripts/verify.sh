@@ -14,6 +14,10 @@ step() { printf '\n== %s\n' "$1"; }
 step "Development hooks"
 node --test .claude/hooks/*.test.mjs
 
+step "Requirement-to-test check"
+node --test scripts/trace.test.mjs
+node scripts/trace.mjs
+
 step "Install (lockfile must be up to date)"
 pnpm install --frozen-lockfile
 
@@ -35,9 +39,9 @@ if docker info > /dev/null 2>&1; then
   fi
 fi
 
-for service in ingest api gateway; do
+for service in services/ingest services/api services/gateway tools/mcp; do
   step "Service: $service"
-  (cd "services/$service" && ./mvnw -B -q verify)
+  (cd "$service" && ./mvnw -B -q verify)
 done
 
 if $fast; then
