@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 # Build context is the repository root, like the other services (the tests read the contracts in /contracts).
 FROM eclipse-temurin:21-jdk AS build
+# The Maven wrapper checks the Maven download against a checksum of the .zip. Without unzip it quietly fetches
+# the .tar.gz instead, and the check fails. The base image does not promise to ship unzip, so install it.
+RUN apt-get update && apt-get install -y --no-install-recommends unzip
 WORKDIR /repo
 COPY contracts contracts
 COPY services/gateway/.mvn services/gateway/.mvn
