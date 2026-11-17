@@ -9,6 +9,7 @@ if [ -f .env ]; then set -a; . ./.env; set +a; fi
 REPLAY_PORT="${REPLAY_PORT:-18090}"
 API_PORT="${API_PORT:-8080}"
 API="http://127.0.0.1:${API_PORT}"
+GATEWAY_PORT="${GATEWAY_PORT:-8082}"
 
 pass() { echo "ok    $1"; }
 fail() { echo "FAIL  $1" >&2; exit 1; }
@@ -88,6 +89,9 @@ pass "api stores aircraft states and serves current aircraft and a track ($icao:
 paths="$(curl -fsS "$API/v3/api-docs" | jq_node 'Object.keys(d.paths).length')"
 [ "$paths" -eq 4 ] || fail "expected 4 paths in the OpenAPI document, got $paths"
 pass "api serves its OpenAPI document"
+
+live="$(node scripts/ws-check.mjs "ws://127.0.0.1:${GATEWAY_PORT}/ws/v1")" || fail "live feed: $live"
+pass "gateway pushes hello, heartbeat, aircraft in the subscribed area and telemetry over WebSocket ($live)"
 
 docker compose exec -T postgres psql -U skyfeed -d skyfeed -tAc 'select 1' | grep -qx 1 || fail "PostgreSQL does not answer"
 pass "PostgreSQL answers"

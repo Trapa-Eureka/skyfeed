@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Trapa-Eureka/skyfeed/contracts/ws.server.v1.schema.json",
+  "title": "Live feed, gateway to client, v1",
+  "description": "Every message the gateway sends on the WebSocket /ws/v1. The type field says which one it is.",
+  "oneOf": [
+    {
+      "title": "hello",
+      "description": "Sent once, right after the connection opens.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "heartbeatSeconds"],
+      "properties": {
+        "type": { "const": "hello" },
+        "heartbeatSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "A heartbeat follows at least this often. A client that sees none for a few intervals should treat the connection as broken."
+        }
+      }
+    },
+    {
+      "title": "subscribed",
+      "description": "Answer to a subscribe message: the subscription now in force.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "area", "sensors"],
+      "properties": {
+        "type": { "const": "subscribed" },
+        "area": { "type": ["object", "null"] },
+        "sensors": { "type": "boolean" }
+      }
+    },
+    {
+      "title": "aircraft",
+      "description": "A new state of an aircraft inside the subscribed area. state is an adsb.state.v1 message.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "state"],
+      "properties": {
+        "type": { "const": "aircraft" },
+        "state": { "type": "object" }
+      }
+    },
+    {
+      "title": "telemetry",
+      "description": "A new reading of a sensor. reading is a telemetry.v1 message.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "reading"],
+      "properties": {
+        "type": { "const": "telemetry" },
+        "reading": { "type": "object" }
+      }
+    },
+    {
+      "title": "heartbeat",
+      "description": "Sent at a fixed interval whether or not there is data, so a quiet feed can be told from a broken connection.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "ts"],
+      "properties": {
+        "type": { "const": "heartbeat" },
+        "ts": { "type": "string", "format": "date-time", "description": "The gateway's clock, UTC, RFC 3339." }
+      }
+    },
+    {
+      "title": "error",
+      "description": "A message from the client could not be used. The subscription in force is unchanged.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message"],
+      "properties": {
+        "type": { "const": "error" },
+        "message": { "type": "string" }
+      }
+    }
+  ]
+}

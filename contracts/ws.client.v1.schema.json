@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Trapa-Eureka/skyfeed/contracts/ws.client.v1.schema.json",
+  "title": "Live feed, client to gateway, v1",
+  "description": "The one message a browser sends on the WebSocket /ws/v1: what it wants to receive. A new subscribe message replaces the previous one.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type"],
+  "properties": {
+    "type": { "const": "subscribe" },
+    "area": {
+      "description": "The map area to receive aircraft for. Null or absent: no aircraft.",
+      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/area" }]
+    },
+    "sensors": {
+      "type": "boolean",
+      "default": false,
+      "description": "True to receive the readings of all sensors."
+    }
+  },
+  "$defs": {
+    "area": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lamin", "lomin", "lamax", "lomax"],
+      "description": "A box in degrees. lamin must be below lamax and lomin below lomax; a box across the 180th meridian is not supported.",
+      "properties": {
+        "lamin": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lomin": { "type": "number", "minimum": -180, "maximum": 180 },
+        "lamax": { "type": "number", "minimum": -90, "maximum": 90 },
+        "lomax": { "type": "number", "minimum": -180, "maximum": 180 }
+      }
+    }
+  }
+}

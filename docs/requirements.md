@@ -29,10 +29,10 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 
 | Id | Requirement | Phase | Covered by |
 |---|---|---|---|
-| R-RT-01 | A browser connected by WebSocket receives aircraft updates for the map area it subscribed to, and no others. | 4 | |
-| R-RT-02 | A connected browser receives sensor readings and sensor status changes. | 4 | |
-| R-RT-03 | A slow client does not delay other clients; for a slow client older position updates for the same aircraft are dropped in favour of the newest. | 4 | |
-| R-RT-04 | The gateway sends a heartbeat so a client can tell a quiet feed from a broken connection. | 4 | |
+| R-RT-01 | A browser connected by WebSocket receives aircraft updates for the map area it subscribed to, and no others. | 4 | `services/gateway`: `LiveEndpointTest` (real WebSocket connections and Kafka), `MessagesTest`; `scripts/smoke.sh` |
+| R-RT-02 | A connected browser receives sensor readings and sensor status changes. | 4 | `services/gateway`: `LiveEndpointTest`; `scripts/smoke.sh`. Readings only: status changes are not sent yet, because nothing publishes them until R-OPS-01 (Phase 6). |
+| R-RT-03 | A slow client does not delay other clients; for a slow client older position updates for the same aircraft are dropped in favour of the newest. The same applies to the readings of one sensor. | 4 | `services/gateway`: `ClientSessionTest`, with a simulated client that takes nothing. Not tried with a real congested network connection. |
+| R-RT-04 | The gateway sends a heartbeat so a client can tell a quiet feed from a broken connection. | 4 | `services/gateway`: `LiveEndpointTest`; `scripts/smoke.sh` |
 
 ## Operator console
 
@@ -51,7 +51,7 @@ Phases refer to the [Roadmap](../README.md#roadmap).
 | R-OPS-02 | An aircraft with no update for a configured time is removed from the live picture. | 6 | |
 | R-OPS-03 | After the message broker or database restarts, every service recovers without a manual restart. | 6 | |
 | R-OPS-04 | Every service exposes health and metrics endpoints, including message lag and the age of the last message per source. | 6 | |
-| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`, for what exists so far: brokers, database, simulator, `ingest` and `api`. The services join the stack in their own phases. |
+| R-OPS-05 | The whole stack starts with one command on a machine with only Docker installed. | 1 | `scripts/smoke.sh`, for what exists so far: brokers, database, simulator, `ingest`, `api` and `gateway`. The services join the stack in their own phases. |
 
 ## AI tooling
 
